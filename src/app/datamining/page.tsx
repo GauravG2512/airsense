@@ -64,15 +64,17 @@ export default function DataMiningPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-[#efefef] gap-2 font-mono text-xs">
-        {[
-          { id: 'pca', label: '1. PCA Dimensionality Reduction' },
-          { id: 'clustering', label: '2. Station Clustering & Profiles' },
-          { id: 'anomalies', label: '3. Statistical Anomaly Detection' },
-          { id: 'correlation', label: '4. Dynamic Correlation Matrix' },
-        ].map((tab) => (
+        {(
+          [
+            { id: 'pca', label: '1. PCA Dimensionality Reduction' },
+            { id: 'clustering', label: '2. Station Clustering & Profiles' },
+            { id: 'anomalies', label: '3. Statistical Anomaly Detection' },
+            { id: 'correlation', label: '4. Dynamic Correlation Matrix' },
+          ] as const
+        ).map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-2.5 transition-all ${
               activeTab === tab.id
                 ? 'border-b-2 border-[#202020] text-[#202020] font-medium'

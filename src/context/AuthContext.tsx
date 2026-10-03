@@ -48,20 +48,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('airsense_auth_user');
-      if (stored) {
-        setUser(JSON.parse(stored));
-      } else {
-        // By default initialize as Citizen for immediate friendly dashboard usability
+    let mounted = true;
+    queueMicrotask(() => {
+      if (!mounted) return;
+      try {
+        const stored = localStorage.getItem('airsense_auth_user');
+        if (stored) {
+          setUser(JSON.parse(stored));
+        } else {
+          // By default initialize as Citizen for immediate friendly dashboard usability
+          setUser(DEFAULT_CITIZEN_USER);
+          localStorage.setItem('airsense_auth_user', JSON.stringify(DEFAULT_CITIZEN_USER));
+        }
+      } catch {
         setUser(DEFAULT_CITIZEN_USER);
-        localStorage.setItem('airsense_auth_user', JSON.stringify(DEFAULT_CITIZEN_USER));
+      } finally {
+        setIsInitialized(true);
       }
-    } catch {
-      setUser(DEFAULT_CITIZEN_USER);
-    } finally {
-      setIsInitialized(true);
-    }
+    });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const login = (role: UserRole, email?: string, name?: string) => {

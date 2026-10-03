@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { DemoBadge } from '@/components/ui/DemoBadge';
 import { AqiBadge } from '@/components/ui/AqiBadge';
 import { DisclaimerBanner } from '@/components/ui/DisclaimerBanner';
+import { AqiCategory } from '@/lib/api';
 import { ALL_15_POLLUTANTS } from '@/lib/mock-data';
 
 export default function AnalyticsPage() {
@@ -239,7 +240,7 @@ export default function AnalyticsPage() {
                     <td className="font-mono text-[#4d4d4d]">{row.avg_no2}</td>
                     <td className="font-mono text-[#202020] font-semibold">{row.aqi_median}</td>
                     <td>
-                      <AqiBadge category={row.status as any} showNumber={false} size="sm" />
+                      <AqiBadge category={row.status as AqiCategory} showNumber={false} size="sm" />
                     </td>
                   </tr>
                 ))}
