@@ -1,0 +1,6 @@
+input,method,value,purpose
+Location permission,Browser geolocation,Latitude/longitude,Nearest monitored station
+Manual location,City/station search,City or station,Fallback when permission is denied
+Current time,Browser/device local time,Local timestamp,Current analytics window
+Manual time,Date/time picker,User-selected timestamp,Historical or future analysis
+Activity,"Walking, Running, Cycling, Outdoor Sports, Commute, Other",Selected activity,Activity-window analytics

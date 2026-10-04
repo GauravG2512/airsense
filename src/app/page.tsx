@@ -1,40 +1,112 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  ArrowRight,
-  Database,
-  Layers,
-  Boxes,
-  Cpu,
-  Activity,
-  GitBranch,
-  Compass,
-  CheckCircle2,
-  Table,
-} from 'lucide-react';
-import { DemoBadge } from '@/components/ui/DemoBadge';
+import { ArrowRight } from 'lucide-react';
 import { AqiBadge } from '@/components/ui/AqiBadge';
 import { DisclaimerBanner } from '@/components/ui/DisclaimerBanner';
-import {
-  MONITORED_STATIONS,
-  getStationAirReading,
-  getStationForecast,
-  STATION_CLUSTERS,
-  ALL_15_POLLUTANTS,
-  executeOLAPQuery,
-} from '@/lib/mock-data';
-import { CPCB_AQI_CATEGORIES } from '@/lib/api';
+import { CPCB_AQI_CATEGORIES, getAqiCategory } from '@/lib/api';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+type CitySnapshot = {
+  city_name: string;
+  pollution_date: string;
+  aqi_estimate: number;
+  aqi_category: string;
+  dominant_pollutant: string;
+};
+
+type OlapResult = {
+  source_file: string;
+  columns: string[];
+  data: Array<Record<string, string | number | null>>;
+};
+
+type OlapState = {
+  operation: 'Roll-up' | 'Drill-down' | 'Slice' | 'Dice' | 'Pivot';
+  result?: OlapResult;
+  error?: string;
+};
 
 export default function HomePage() {
-  const [selectedHeroStation, setSelectedHeroStation] = useState('MH_001'); // BKC Mumbai
-  const currentReading = getStationAirReading(selectedHeroStation);
-  const forecast = getStationForecast(selectedHeroStation);
+  const [citySnapshots, setCitySnapshots] = useState<CitySnapshot[]>([]);
+  const [selectedHeroCity, setSelectedHeroCity] = useState('Mumbai');
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
 
-  // OLAP quick demonstration state
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API_BASE}/api/air/current?limit=1000`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`AirSense API ${response.status}: ${await response.text()}`);
+        }
+        return response.json() as Promise<{ data?: CitySnapshot[] }>;
+      })
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        const rows = Array.isArray(result.data) ? result.data : [];
+        setCitySnapshots(rows);
+        if (rows.length) {
+          setSelectedHeroCity((current) =>
+            rows.some((row) => row.city_name === current) ? current : rows[0].city_name
+          );
+        }
+      })
+      .catch((requestError: unknown) => {
+        if (!controller.signal.aborted) {
+          setSnapshotError(
+            requestError instanceof Error
+              ? requestError.message
+              : `Unable to reach the AirSense API at ${API_BASE}.`
+          );
+        }
+      });
+    return () => controller.abort();
+  }, []);
+
+  const currentReading = citySnapshots.find((row) => row.city_name === selectedHeroCity);
+  const currentAqi = currentReading ? Number(currentReading.aqi_estimate) : null;
+  const currentCategory = currentAqi === null ? null : getAqiCategory(currentAqi);
+
+  // OLAP preview controls
   const [olapOp, setOlapOp] = useState<'Roll-up' | 'Drill-down' | 'Slice' | 'Dice' | 'Pivot'>('Roll-up');
-  const olapDemoResult = executeOLAPQuery('avg_pm25', 'Time', olapOp === 'Drill-down' ? 'Month' : 'Year', olapOp);
+  const [olapState, setOlapState] = useState<OlapState | null>(null);
+  const olapLoading = !olapState || olapState.operation !== olapOp;
+  const olapResult = olapState?.operation === olapOp ? olapState.result || null : null;
+  const olapError = olapState?.operation === olapOp ? olapState.error || null : null;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const operation = olapOp.toLowerCase().replace('-', '');
+    fetch(`${API_BASE}/api/olap?operation=${operation}&limit=20`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`AirSense API ${response.status}: ${await response.text()}`);
+        }
+        return response.json() as Promise<OlapResult>;
+      })
+      .then((result) => {
+        if (!controller.signal.aborted) setOlapState({ operation: olapOp, result });
+      })
+      .catch((requestError: unknown) => {
+        if (!controller.signal.aborted) {
+          setOlapState({
+            operation: olapOp,
+            error: requestError instanceof Error
+              ? requestError.message
+              : `Unable to reach the AirSense API at ${API_BASE}.`,
+          });
+        }
+      });
+    return () => controller.abort();
+  }, [olapOp]);
 
   return (
     <div className="space-y-20 pb-24 bg-[#ffffff]">
@@ -49,7 +121,7 @@ export default function HomePage() {
           <div className="lg:col-span-6 space-y-6">
             <div className="editorial-tag bg-[#efefef] text-[#202020] border border-[#e8e8e8]">
               <span className="w-1.5 h-1.5 rounded-full bg-[#ff682c]" />
-              <span>DWM + ML + CITIZEN OBSERVATORY</span>
+              <span>CITIZEN OBSERVATORY</span>
             </div>
 
             <div className="space-y-4">
@@ -72,7 +144,7 @@ export default function HomePage() {
                 Engineering Ingestion Pipeline
               </div>
               <div className="text-[#202020] font-sans text-xs">
-                196.5M Raw Parquet Obs → DuckDB Scan → Fact Constellation DW → OLAP Cubes → XGBoost ML → Citizen Action
+                196.5M Historical Observations → Air Quality Analysis → Forecasts → Citizen Action
               </div>
             </div>
 
@@ -128,24 +200,25 @@ export default function HomePage() {
                   Observatory Live Snapshot
                 </span>
               </div>
-              <DemoBadge label="SIMULATION // DATA FEED" />
+              <span className="text-[10px] font-mono uppercase text-[#828282]">Persisted City Reading</span>
             </div>
 
-            {/* Active Station Select */}
+            {/* City snapshot selector */}
             <div className="flex items-center justify-between text-xs font-mono">
               <label htmlFor="hero-select" className="text-[#828282] text-[11px]">
-                Monitored Station:
+                City:
               </label>
               <select
                 id="hero-select"
-                value={selectedHeroStation}
-                onChange={(e) => setSelectedHeroStation(e.target.value)}
+                value={selectedHeroCity}
+                onChange={(e) => setSelectedHeroCity(e.target.value)}
                 className="bg-[#f5f5f5] border border-[#e8e8e8] text-[#202020] px-2.5 py-1 text-xs focus:outline-none"
                 style={{ borderRadius: '0px' }}
+                disabled={!citySnapshots.length}
               >
-                {MONITORED_STATIONS.slice(0, 8).map((stn) => (
-                  <option key={stn.station_id} value={stn.station_id}>
-                    {stn.station_name} ({stn.city})
+                {citySnapshots.map((snapshot) => (
+                  <option key={snapshot.city_name} value={snapshot.city_name}>
+                    {snapshot.city_name}
                   </option>
                 ))}
               </select>
@@ -153,86 +226,45 @@ export default function HomePage() {
 
             {/* Large Number AQI Box */}
             <div className="p-6 bg-[#f5f5f5] rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div>
-                <div className="text-[11px] font-mono text-[#828282] uppercase tracking-wider">
-                  Observed AQI Status ({currentReading.city})
-                </div>
-                <div className="flex items-baseline gap-3 mt-1">
-                  <span
-                    className="text-5xl font-normal text-[#202020] tracking-tight"
-                    style={{ fontFamily: 'var(--font-heading)' }}
-                  >
-                    {currentReading.aqi}
-                  </span>
-                  <AqiBadge category={currentReading.aqi_category} showNumber={false} size="md" />
-                </div>
-                <div className="text-xs text-[#4d4d4d] mt-1 font-sans">
-                  Dominant: <strong className="text-[#202020]">{currentReading.dominant_pollutant}</strong> ({currentReading.pollutants[0].value} {currentReading.pollutants[0].unit})
-                </div>
-              </div>
-
-              <div className="sm:border-l sm:border-[#e8e8e8] sm:pl-5 text-right font-mono text-xs space-y-1">
-                <div className="text-[10px] text-[#828282] uppercase">Sensor Network</div>
-                <div className="text-[#202020] font-medium font-sans">CAAQM Continuous</div>
-                <div className="text-[10px] text-[#828282] uppercase pt-1">Sample Grain</div>
-                <div className="text-[#4d4d4d] text-[11px]">19:00 IST Hourly</div>
-              </div>
-            </div>
-
-            {/* Pollutants Grid with Ember and Brass Punctuation */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-xs">
-              {currentReading.pollutants.slice(0, 4).map((p, idx) => (
-                <div key={p.pollutant_id} className="p-3 border border-[#e8e8e8] bg-[#ffffff] rounded-lg">
-                  <div className="flex justify-between text-[11px] text-[#828282]">
-                    <span className="font-semibold text-[#202020]">{p.symbol}</span>
-                    <span>{p.unit}</span>
-                  </div>
-                  <div
-                    className="text-lg text-[#202020] mt-1"
-                    style={{ fontFamily: 'var(--font-heading)' }}
-                  >
-                    {p.value}
-                  </div>
-                  <div className="text-[10px] text-[#828282] pt-1 border-t border-[#efefef] mt-1 flex justify-between">
-                    <span>Lim: {p.standard_cpcb_24h}</span>
-                    <span className={p.value > p.standard_cpcb_24h ? 'text-[#ff682c] font-semibold' : 'text-[#816729]'}>
-                      {p.value > p.standard_cpcb_24h ? 'Exceeds' : 'Norm'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Forecast Ribbon: Now vs Forecast */}
-            <div className="p-4 bg-[#f5f5f5] rounded-xl space-y-2 font-mono text-xs">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-[#202020] font-sans font-medium uppercase">
-                  XGBoost Regressor Horizon (+1h to +24h)
-                </span>
-                <span className="text-[#828282]">Observed vs Predicted</span>
-              </div>
-              <div className="grid grid-cols-5 gap-1.5 text-center">
-                <div className="p-2 bg-[#ffffff] border border-[#e8e8e8] rounded">
-                  <div className="text-[10px] text-[#828282]">NOW</div>
-                  <div className="text-base text-[#202020]" style={{ fontFamily: 'var(--font-heading)' }}>
-                    {currentReading.aqi}
-                  </div>
-                  <div className="text-[9px] text-[#828282]">Observed</div>
-                </div>
-                {forecast.slice(0, 4).map((fc) => (
-                  <div key={fc.forecast_hour} className="p-2 bg-[#ffffff] border border-dashed border-[#e8e8e8] rounded">
-                    <div className="text-[10px] text-[#828282]">+{fc.forecast_hour}h</div>
-                    <div className="text-base text-[#202020]" style={{ fontFamily: 'var(--font-heading)' }}>
-                      {fc.predicted_aqi}
+              {currentReading ? (
+                <>
+                  <div>
+                    <div className="text-[11px] font-mono text-[#828282] uppercase tracking-wider">
+                      Persisted AQI snapshot · {currentReading.city_name}
                     </div>
-                    <div className="text-[9px] text-[#ff682c]">Predicted</div>
+                    <div className="flex items-baseline gap-3 mt-1">
+                      <span
+                        className="text-5xl font-normal text-[#202020] tracking-tight"
+                        style={{ fontFamily: 'var(--font-heading)' }}
+                      >
+                        {Math.round(currentReading.aqi_estimate)}
+                      </span>
+                      {currentCategory && <AqiBadge category={currentCategory} showNumber={false} size="md" />}
+                    </div>
+                    <div className="text-xs text-[#4d4d4d] mt-1 font-sans">
+                      Dominant pollutant: <strong className="text-[#202020]">{currentReading.dominant_pollutant}</strong>
+                    </div>
                   </div>
-                ))}
-              </div>
+                  <div className="sm:border-l sm:border-[#e8e8e8] sm:pl-5 text-right font-mono text-xs space-y-1">
+                    <div className="text-[10px] text-[#828282] uppercase">Saved reading date</div>
+                    <div className="text-[#202020] font-medium font-sans">{currentReading.pollution_date}</div>
+                    <div className="text-[10px] text-[#828282] uppercase pt-1">AQI estimate</div>
+                    <div className="text-[#4d4d4d] text-[11px]">{currentReading.aqi_estimate.toFixed(1)}</div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs text-[#828282]">
+                  {snapshotError || 'Loading persisted city readings...'}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 bg-[#f5f5f5] rounded-xl text-xs text-[#4d4d4d] font-sans">
+              This view uses the backend&apos;s saved city-level air quality records. Open the station map for station-level readings and coordinates.
             </div>
 
             <div className="text-[11px] text-[#828282] flex justify-between items-center pt-1 font-mono">
-              <span>Coordinates: 19.066° N, 72.868° E</span>
+              <span>Source: persisted AirSense city dataset</span>
               <Link href="/dashboard" className="link-ember-underline text-[#202020]">
                 Full Citizen View →
               </Link>
@@ -397,7 +429,7 @@ export default function HomePage() {
               <div><span className="text-[#202020] font-semibold">Measure:</span> measurement_value (NUMERIC)</div>
             </div>
             <p className="text-xs text-[#4d4d4d] font-sans leading-normal">
-              Maintains atomic observational integrity for deep ML feature engineering and raw outlier validation.
+              Maintains atomic observational integrity for feature engineering and raw outlier validation.
             </p>
           </div>
 
@@ -426,7 +458,7 @@ export default function HomePage() {
             <div>
               <div className="text-[11px] font-mono uppercase text-[#816729]">Multidimensional Workspace</div>
               <h3 className="text-lg text-[#202020]" style={{ fontFamily: 'var(--font-heading)' }}>
-                OLAP Cube Simulation: {olapOp}
+                OLAP Cube Analysis: {olapOp}
               </h3>
             </div>
             <div className="flex gap-1.5 font-mono text-xs">
@@ -447,37 +479,34 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start font-mono text-xs">
-            <div className="lg:col-span-7 overflow-x-auto">
-              <table className="w-full editorial-table">
-                <thead>
-                  <tr>
-                    {olapDemoResult.dimensions.map((dim) => (
-                      <th key={dim}>{dim}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {olapDemoResult.records.map((r, i) => (
-                    <tr key={i}>
-                      {olapDemoResult.dimensions.map((dim) => (
-                        <td key={dim}>{r[dim]}</td>
+          <div className="space-y-3 font-mono text-xs">
+            {olapError && <div className="border border-red-200 bg-red-50 p-3 text-red-700">{olapError}</div>}
+            {olapLoading && <div className="text-[#828282]">Loading persisted OLAP results...</div>}
+            {olapResult && !olapLoading && (
+              <>
+                <div className="text-[10px] uppercase text-[#828282]">
+                  Persisted result · {olapResult.source_file} · showing {olapResult.data.length} rows
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full editorial-table">
+                    <thead>
+                      <tr>
+                        {olapResult.columns.map((column) => <th key={column}>{column}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {olapResult.data.map((row, index) => (
+                        <tr key={index}>
+                          {olapResult.columns.map((column) => (
+                            <td key={column}>{row[column] ?? '—'}</td>
+                          ))}
+                        </tr>
                       ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="lg:col-span-5 p-4 bg-[#202020] text-white rounded space-y-2">
-              <div className="text-[10px] text-[#828282] uppercase flex justify-between">
-                <span>Generated Warehouse SQL</span>
-                <span className="text-[#ff682c]">PostgreSQL 16</span>
-              </div>
-              <pre className="text-[11px] text-[#ebe6dd] whitespace-pre-wrap overflow-x-auto leading-relaxed">
-                {olapDemoResult.generated_sql}
-              </pre>
-            </div>
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </section>

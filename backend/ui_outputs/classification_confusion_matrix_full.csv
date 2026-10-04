@@ -1,0 +1,7 @@
+actual,Good,Moderate,Poor,Satisfactory,Severe,Very Poor
+Good,428,3,0,209,0,0
+Moderate,2,275,26,102,0,9
+Poor,0,37,41,2,0,32
+Satisfactory,71,104,1,541,0,2
+Severe,0,0,0,0,0,1
+Very Poor,0,11,22,0,1,80

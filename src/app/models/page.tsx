@@ -12,6 +12,7 @@ import {
   MODEL_REGRESSION_METRICS,
   MODEL_CLASSIFICATION_METRICS,
 } from '@/lib/mock-data';
+import { ModelPerformanceCharts } from '@/components/models/ModelPerformanceCharts';
 
 export default function ModelsPage() {
   const [taskFilter, setTaskFilter] = useState<'all' | 'regression' | 'classification'>('all');
@@ -92,6 +93,8 @@ export default function ModelsPage() {
           Classification (6 CPCB Categories)
         </button>
       </div>
+
+      <ModelPerformanceCharts taskFilter={taskFilter} />
 
       {/* SECTION A: REGRESSION METRICS TABLE */}
       {(taskFilter === 'all' || taskFilter === 'regression') && (

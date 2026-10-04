@@ -1,0 +1,16 @@
+method,endpoint,purpose
+GET,/api/air/latest,Latest available station/city analytics
+GET,/api/air/history,Historical warehouse analytics
+GET,/api/air/forecast,Forecast artifact
+GET,/api/air/map,Pollution map data
+GET,/api/air/anomalies,Anomaly results
+GET,/api/air/clusters,Cluster results
+GET,/api/air/baseline,Historical baseline
+POST,/api/predict/aqi,AQI regression inference
+POST,/api/predict/category,AQI category inference
+GET,/api/warehouse/schema,Warehouse metadata
+GET,/api/warehouse/olap,Parameterized OLAP result
+GET,/api/features,Feature and PCA results
+GET,/api/models,Model metrics and selected models
+GET,/api/pipeline,ETL and quality statistics
+GET,/api/location/nearest-station,Nearest station lookup

@@ -1,0 +1,14 @@
+route,page,purpose
+/,Home,"Project purpose, AQI glossary, unit explanations, source and limitations"
+/dashboard,Personal Air Intelligence,"Location, time, activity, AQI, pollutants, baseline, forecast and anomaly"
+/map,Pollution Map,"Station markers, AQI, pollutant layers, clusters, anomalies and time mode"
+/analytics,Historical Analytics,"Year/month/season/hour trends, city and station comparison, distributions and correlations"
+/warehouse,Data Warehouse,"Facts, dimensions, grain, keys, counts, star schema, snowflake and SCD"
+/olap,OLAP Explorer,"Roll-up, drill-down, slice, dice, pivot, cube and grouping sets"
+/features,Feature Lab,"Feature engineering, ranking, selection, RFE, tree importance and PCA"
+/datamining,Data Mining,"K-Means, hierarchical clustering, DBSCAN, anomalies and pollutant relationships"
+/models,Model Comparison,"Regression, classification, forecasting, metrics, error plots and selected model"
+/explain,Explain My AQI,"Historical deviation, dominant pollutant, global feature importance and optional SHAP"
+/pipeline,ETL & Data Quality,"Source, validation, cleaning, rejected rows, ETL counts and warehouse validation"
+/concepts,DWM + ML Concepts,Concept definitions linked to actual AirSense artifacts
+/about,About,"Team, architecture, methods, source, attribution, limitations and documentation"

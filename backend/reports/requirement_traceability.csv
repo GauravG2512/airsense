@@ -1,0 +1,44 @@
+requirement,area,covered,evidence
+Large historical data,DWM,True,Drive history_daily Parquet
+Data profiling,DWM,False,Coverage and profile reports
+Missing-value analysis,DWM,False,Missing-value report
+Duplicate analysis,DWM,False,Duplicate report
+Outlier analysis,DWM/ML,False,IQR/Z-score report
+Temporal gaps,DWM,False,Gap report
+Preprocessing,DWM,True,Clean measurements
+EDA,DWM/ML,False,Historical visualizations
+AQI computation,ML/Product,True,AQI analytical dataset
+Feature engineering,ML,True,Feature dataset
+Feature selection,ML,True,Selected features
+PCA,ML,True,PCA artifact
+K-Means,ML,True,Station clusters
+Hierarchical clustering,ML,True,Executed in clustering stage
+DBSCAN,ML,True,Executed in clustering stage
+Anomaly detection,ML,True,Anomaly artifact
+Regression,ML,True,Regression model bundle
+Classification,ML,True,Classification model bundle
+Forecasting,ML,True,Hourly forecast when focus layer exists
+Model comparison,ML,True,Regression/classification metrics
+Explainability,ML,False,Feature importance
+Fact tables,DWM,True,Warehouse facts
+Dimensions,DWM,True,Warehouse dimensions
+Star schema,DWM,True,Conformed dimensions around facts
+Snowflake schema,DWM,True,State/city/station hierarchy
+SCD Type 2,DWM,True,Station SCD structure
+Fact constellation,DWM,True,Daily and detailed facts
+Data marts,DWM,True,BI/citizen/ML marts
+Roll-up,DWM,True,OLAP artifact
+Drill-down,DWM,True,OLAP artifact
+Slice,DWM,True,OLAP artifact
+Dice,DWM,True,OLAP artifact
+Pivot,DWM,True,OLAP artifact
+CUBE,DWM,True,OLAP artifact
+GROUPING SETS,DWM,True,OLAP artifact
+Warehouse visualization,DWM,True,Warehouse charts/heatmaps
+Citizen dashboard contract,Product,True,Frontend contract
+Pollution map,Product,True,Station-based map data
+Location fallback,Product,True,Manual location flow
+Activity planning,Product,True,Activity profile artifact
+DWM showcase,Product,True,DWM concept registry
+ML showcase,Product,True,ML concept registry
+PostgreSQL production design,DWM,True,Production DDL

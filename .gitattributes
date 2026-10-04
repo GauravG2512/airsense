@@ -1,0 +1,4 @@
+backend/**/*.joblib filter=lfs diff=lfs merge=lfs -text
+backend/**/*.duckdb filter=lfs diff=lfs merge=lfs -text
+backend/**/*.wal filter=lfs diff=lfs merge=lfs -text
+backend/**/*.parquet filter=lfs diff=lfs merge=lfs -text

@@ -1,594 +1,751 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
-  MapPin,
-  Clock,
-  Navigation,
-  CheckCircle2,
+  Activity,
   AlertTriangle,
-  XCircle,
   ArrowRight,
-  Sparkles,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Database,
+  MapPin,
+  Navigation,
+  RefreshCw,
   User,
-  Heart,
-  Wind,
-  Sun,
-  Shield,
-  Activity,
 } from 'lucide-react';
 import { DemoBadge } from '@/components/ui/DemoBadge';
 import { AqiBadge } from '@/components/ui/AqiBadge';
 import { DisclaimerBanner } from '@/components/ui/DisclaimerBanner';
+import { HealthGuidance } from '@/components/dashboard/HealthGuidance';
 import { useAuth } from '@/context/AuthContext';
-import {
-  MONITORED_STATIONS,
-  getStationAirReading,
-  getStationForecast,
-  getStationHistoricalBaseline,
-} from '@/lib/mock-data';
-import { Station, AirReading, ForecastPoint, HistoricalComparison, CPCB_AQI_CATEGORIES } from '@/lib/api';
+import { CPCB_AQI_CATEGORIES, getAqiCategory, type AqiCategory } from '@/lib/api';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+type CurrentCity = {
+  city_name: string;
+  pollution_date: string;
+  aqi_estimate: number;
+  aqi_category: string;
+  dominant_pollutant: string;
+  latitude: number;
+  longitude: number;
+  [key: string]: unknown;
+};
+
+type ForecastPoint = {
+  period_start: string;
+  predicted_aqi: number;
+  horizon_hours: number;
+  aqi_category: string;
+  [key: string]: unknown;
+};
+
+type GenericRecord = Record<string, unknown>;
+
+type LocationResult = {
+  station_id?: string;
+  station_name?: string;
+  city?: string;
+  state?: string;
+  latitude?: number;
+  longitude?: number;
+  aqi?: number;
+  category?: string;
+  dominant_pollutant?: string;
+  pm25_24h_mean?: number;
+  distance_km?: number;
+};
+
+type ApiEnvelope<T> = { data: T };
+
+type ActivityAdvice = {
+  status: 'Safe' | 'Caution' | 'Avoid';
+  tip: string;
+};
+
+type DashboardData = {
+  cities: CurrentCity[];
+  forecast: ForecastPoint[];
+  activity: GenericRecord[];
+};
+
+const ACTIVITIES = [
+  ['running', 'Jogging & Running'],
+  ['walking', 'Walking & Commute'],
+  ['cycling', 'Road Cycling'],
+  ['children', 'Kids & Elderly'],
+  ['ventilation', 'Home Windows'],
+] as const;
+
+async function apiFetch<T>(endpoint: string, signal?: AbortSignal): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${endpoint}`, { cache: 'no-store', signal });
+  } catch {
+    throw new Error(
+      `Unable to reach the AirSense API at ${API_BASE}. Check that the backend is running and allows this frontend origin.`
+    );
+  }
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`AirSense API ${response.status}: ${body}`);
+  }
+  return response.json();
+}
+
+async function optionalFetch<T>(endpoint: string, signal?: AbortSignal): Promise<T | null> {
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      cache: 'no-store',
+      signal,
+    });
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+async function fetchDashboardData(signal?: AbortSignal): Promise<DashboardData> {
+  const [current, forecastData, activityData] = await Promise.all([
+    apiFetch<ApiEnvelope<CurrentCity[]>>('/api/air/current', signal),
+    optionalFetch<ApiEnvelope<ForecastPoint[]>>('/api/air/forecast', signal),
+    optionalFetch<ApiEnvelope<GenericRecord[]>>('/api/air/activity', signal),
+  ]);
+
+  return {
+    cities: Array.isArray(current.data) ? current.data : [],
+    forecast: forecastData?.data || [],
+    activity: activityData?.data || [],
+  };
+}
+
+function safeCategory(value: string | undefined, aqi: number): AqiCategory {
+  const valid: AqiCategory[] = ['Good', 'Satisfactory', 'Moderate', 'Poor', 'Very Poor', 'Severe'];
+  return value && valid.includes(value as AqiCategory)
+    ? (value as AqiCategory)
+    : getAqiCategory(aqi);
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
+
+function pickNumber(row: GenericRecord | undefined, keys: string[]) {
+  if (!row) return null;
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+}
+
+function pickString(row: GenericRecord | undefined, keys: string[]) {
+  if (!row) return null;
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value === 'string' && value.trim() !== '') return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
+
+function activityAdvice(aqi: number): Record<string, ActivityAdvice> {
+  if (aqi <= 50) {
+    return {
+      running: { status: 'Safe', tip: 'The current AQI is in the Good range.' },
+      walking: { status: 'Safe', tip: 'The current AQI is in the Good range.' },
+      cycling: { status: 'Safe', tip: 'The current AQI is in the Good range.' },
+      children: { status: 'Safe', tip: 'The current AQI is in the Good range.' },
+      ventilation: { status: 'Safe', tip: 'The current AQI is in the Good range.' },
+    };
+  }
+
+  if (aqi <= 100) {
+    return {
+      running: { status: 'Safe', tip: 'Outdoor exercise is generally reasonable at this AQI level.' },
+      walking: { status: 'Safe', tip: 'Normal walking and commuting are reasonable at this AQI level.' },
+      cycling: { status: 'Safe', tip: 'Normal cycling is reasonable at this AQI level.' },
+      children: { status: 'Safe', tip: 'Current AQI is within the Satisfactory range.' },
+      ventilation: { status: 'Safe', tip: 'Current AQI is within the Satisfactory range.' },
+    };
+  }
+
+  if (aqi <= 200) {
+    return {
+      running: { status: 'Caution', tip: 'Consider shorter or lower-intensity outdoor exercise if you are sensitive.' },
+      walking: { status: 'Safe', tip: 'Walking is less strenuous, but sensitive people should monitor conditions.' },
+      cycling: { status: 'Caution', tip: 'Prefer less congested routes and avoid prolonged intense effort.' },
+      children: { status: 'Caution', tip: 'Consider reducing prolonged outdoor exposure for sensitive groups.' },
+      ventilation: { status: 'Caution', tip: 'Use historical and hourly analytics to choose a better window.' },
+    };
+  }
+
+  if (aqi <= 300) {
+    return {
+      running: { status: 'Avoid', tip: 'Avoid strenuous outdoor exercise while AQI remains in this range.' },
+      walking: { status: 'Caution', tip: 'Limit prolonged exposure and take appropriate precautions outdoors.' },
+      cycling: { status: 'Avoid', tip: 'Avoid vigorous road cycling until conditions improve.' },
+      children: { status: 'Avoid', tip: 'Reduce prolonged outdoor exposure for children and sensitive groups.' },
+      ventilation: { status: 'Caution', tip: 'Use the analytics pages to identify lower-pollution windows.' },
+    };
+  }
+
+  return {
+    running: { status: 'Avoid', tip: 'Avoid strenuous outdoor exercise at this AQI level.' },
+    walking: { status: 'Avoid', tip: 'Limit outdoor movement to essential trips.' },
+    cycling: { status: 'Avoid', tip: 'Avoid outdoor cycling until conditions improve.' },
+    children: { status: 'Avoid', tip: 'Reduce outdoor exposure for children and sensitive groups.' },
+    ventilation: { status: 'Avoid', tip: 'Use the forecast and historical analytics to select a safer period.' },
+  };
+}
+
+function statusClass(status: ActivityAdvice['status']) {
+  if (status === 'Safe') return 'bg-white text-emerald-700 border border-[#e8e8e8]';
+  if (status === 'Caution') return 'bg-[#ff682c]/10 text-[#ff682c]';
+  return 'bg-[#202020] text-white';
+}
+
+function recordEntries(row: GenericRecord) {
+  return Object.entries(row)
+    .filter(([, value]) => value !== null && value !== undefined && value !== '')
+    .slice(0, 8);
+}
 
 export default function CitizenDashboardPage() {
   const { user, updatePreferredStation } = useAuth();
-
-  // Selected station
-  const [selectedStationId, setSelectedStationId] = useState<string>(
-    user?.preferredStationId || 'MH_001'
-  );
-
-  // Simple vs Detailed view toggle
-  const [showDetailedPollutants, setShowDetailedPollutants] = useState<boolean>(false);
-
-  // Geolocation state
-  const [geoLocating, setGeoLocating] = useState<boolean>(false);
+  const [cities, setCities] = useState<CurrentCity[]>([]);
+  const [selectedCity, setSelectedCity] = useState('Mumbai');
+  const [forecast, setForecast] = useState<ForecastPoint[]>([]);
+  const [baselineRows, setBaselineRows] = useState<GenericRecord[]>([]);
+  const [explainRows, setExplainRows] = useState<GenericRecord[]>([]);
+  const [activityRows, setActivityRows] = useState<GenericRecord[]>([]);
+  const [selectedActivity, setSelectedActivity] = useState('running');
+  const [showDetails, setShowDetails] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [geoLocating, setGeoLocating] = useState(false);
   const [geoMessage, setGeoMessage] = useState<string | null>(null);
-
-  // Selected quick activity tab
-  const [selectedActivity, setSelectedActivity] = useState<string>('running');
-
-  // Time state
-  const [currentTimeStr, setCurrentTimeStr] = useState<string>('');
+  const [locationStation, setLocationStation] = useState<LocationResult | null>(null);
+  const [currentTime, setCurrentTime] = useState('');
 
   useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTimeStr(
-        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST'
-      );
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
+    const update = () => setCurrentTime(new Date().toLocaleTimeString('en-IN'));
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
   }, []);
 
-  const station: Station =
-    MONITORED_STATIONS.find((s) => s.station_id === selectedStationId) || MONITORED_STATIONS[4];
-  const reading: AirReading = getStationAirReading(selectedStationId);
-  const forecast: ForecastPoint[] = getStationForecast(selectedStationId);
+  useEffect(() => {
+    if (!selectedCity || locationStation) return;
 
-  // Quick popular city stations
-  const popularCities = [
-    { label: 'Mumbai', stationId: 'MH_001' },
-    { label: 'Delhi', stationId: 'DL_001' },
-    { label: 'Bengaluru', stationId: 'KA_001' },
-    { label: 'Pune', stationId: 'MH_002' },
-    { label: 'Hyderabad', stationId: 'TG_001' },
-    { label: 'Kolkata', stationId: 'WB_001' },
-    { label: 'Chennai', stationId: 'TN_001' },
-  ];
+    const controller = new AbortController();
+    const query = `city=${encodeURIComponent(selectedCity)}&limit=4`;
 
-  // Geolocation handler
+    Promise.all([
+      optionalFetch<ApiEnvelope<GenericRecord[]>>(`/api/air/baseline?${query}`, controller.signal),
+      optionalFetch<ApiEnvelope<GenericRecord[]>>(`/api/air/explain?${query}`, controller.signal),
+    ]).then(([baseline, explain]) => {
+      if (controller.signal.aborted) return;
+      setBaselineRows(baseline?.data || []);
+      setExplainRows(explain?.data || []);
+    });
+
+    return () => controller.abort();
+  }, [locationStation, selectedCity]);
+
+  const applyDashboardData = useCallback((data: DashboardData) => {
+    setCities(data.cities);
+    setForecast(data.forecast);
+    setActivityRows(data.activity);
+    setSelectedCity((current) =>
+      data.cities.length && !data.cities.some((item) => item.city_name === current)
+        ? data.cities[0].city_name
+        : current
+    );
+  }, []);
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      applyDashboardData(await fetchDashboardData());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load AirSense data.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [applyDashboardData]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetchDashboardData(controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted) applyDashboardData(data);
+      })
+      .catch((err: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : 'Unable to load AirSense data.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [applyDashboardData]);
+
+  const selected = useMemo(
+    () => locationStation
+      ? {
+          city_name: locationStation.city || locationStation.station_name || 'Nearest station',
+          pollution_date: '',
+          aqi_estimate: locationStation.aqi ?? 0,
+          aqi_category: locationStation.category || '',
+          dominant_pollutant: locationStation.dominant_pollutant || '',
+          pm25_24h_mean: locationStation.pm25_24h_mean,
+          latitude: locationStation.latitude ?? 0,
+          longitude: locationStation.longitude ?? 0,
+        }
+      : cities.find((item) => item.city_name === selectedCity) || cities[0] || null,
+    [cities, locationStation, selectedCity]
+  );
+
+  const aqi = selected?.aqi_estimate ?? 0;
+  const category = safeCategory(selected?.aqi_category, aqi);
+  const pm25TwentyFourHourMean = selected
+    ? pickNumber({ pm25_24h_mean: selected.pm25_24h_mean }, ['pm25_24h_mean'])
+    : null;
+  const advice = activityAdvice(aqi);
+
+  const baselineForCity = useMemo(
+    () => locationStation ? [] : baselineRows.filter((row) => {
+      const city = pickString(row, ['city_name', 'city', 'location', 'city_name_x']);
+      return !city || city === selectedCity;
+    }),
+    [baselineRows, locationStation, selectedCity]
+  );
+
+  const explainForCity = useMemo(
+    () => locationStation ? [] : explainRows.filter((row) => {
+      const city = pickString(row, ['city_name', 'city', 'location']);
+      return !city || city === selectedCity;
+    }),
+    [explainRows, locationStation, selectedCity]
+  );
+
+  const historicalMean = pickNumber(baselineForCity[0], [
+    'historical_mean',
+    'historical_mean_aqi',
+    'historical_baseline',
+    'historical_station_mean',
+    'historical_city_mean',
+    'baseline_aqi',
+  ]);
+
+  const deviation = pickNumber(baselineForCity[0], [
+    'deviation_pct',
+    'deviation_percentage',
+    'deviation_from_city_mean',
+    'deviation',
+  ]);
+
+  const dominantPollutant =
+    selected?.dominant_pollutant ||
+    pickString(explainForCity[0], ['dominant_pollutant', 'pollutant', 'parameter_name']) ||
+    'Unavailable';
+
+  const chosenActivity = advice[selectedActivity] || advice.running;
+
   const handleUseMyLocation = () => {
     setGeoLocating(true);
     setGeoMessage(null);
 
     if (!navigator.geolocation) {
-      setGeoMessage('Location access is not available on this browser.');
+      setGeoMessage('Location access is not available in this browser.');
       setGeoLocating(false);
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        let nearest = MONITORED_STATIONS[0];
-        let minD = Number.MAX_VALUE;
+      async ({ coords }) => {
+        try {
+          const result = await apiFetch<LocationResult>(
+            `/api/location/nearest-station?latitude=${coords.latitude}&longitude=${coords.longitude}`
+          );
 
-        MONITORED_STATIONS.forEach((stn) => {
-          const d = Math.hypot(stn.latitude - latitude, stn.longitude - longitude);
-          if (d < minD) {
-            minD = d;
-            nearest = stn;
+          if (!result.station_id || !result.station_name || typeof result.aqi !== 'number') {
+            throw new Error('Nearest station response is missing its station reading.');
           }
-        });
 
-        setSelectedStationId(nearest.station_id);
-        updatePreferredStation(nearest.station_id);
-        setGeoMessage(`Located nearest monitor: ${nearest.station_name}, ${nearest.city}`);
-        setGeoLocating(false);
+          setLocationStation(result);
+          setBaselineRows([]);
+          setExplainRows([]);
+          if (result.city) setSelectedCity(result.city);
+          updatePreferredStation(String(result.station_id));
+          setGeoMessage(
+            `Showing nearest monitor: ${result.station_name}${result.city ? ` · ${result.city}` : ''}${
+              typeof result.distance_km === 'number' ? ` · ${result.distance_km.toFixed(1)} km` : ''
+            }`
+          );
+        } catch {
+          setGeoMessage('Location was received, but the nearest monitored station could not be resolved.');
+        } finally {
+          setGeoLocating(false);
+        }
       },
       () => {
-        setGeoMessage('Location permission denied. You can select your city from the list.');
+        setGeoMessage('Location permission was denied. Choose a city manually.');
         setGeoLocating(false);
       },
-      { timeout: 7000 }
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
     );
   };
 
-  // Activity safety evaluation based on AQI
-  const getActivityAdvice = (aqi: number) => {
-    if (aqi <= 50) {
-      return {
-        verdict: 'Ideal for All Outdoor Activities',
-        running: { status: 'Safe', tip: 'Air is pristine. Great time for long runs and intense cardio.', badge: 'Safe' },
-        walking: { status: 'Safe', tip: 'Enjoy the fresh air outdoors anytime today.', badge: 'Safe' },
-        children: { status: 'Safe', tip: 'Completely safe for children and elderly individuals.', badge: 'Safe' },
-        cycling: { status: 'Safe', tip: 'No masks or precautions needed.', badge: 'Safe' },
-        ventilation: { status: 'Safe', tip: 'Open windows to bring clean outdoor air into your home.', badge: 'Safe' },
-      };
-    } else if (aqi <= 100) {
-      return {
-        verdict: 'Good Outdoor Conditions',
-        running: { status: 'Safe', tip: 'Outdoor exercise is fine for healthy individuals.', badge: 'Safe' },
-        walking: { status: 'Safe', tip: 'Normal walking and daily commuting are fine.', badge: 'Safe' },
-        children: { status: 'Safe', tip: 'Normal outdoor playtime is safe.', badge: 'Safe' },
-        cycling: { status: 'Safe', tip: 'Normal cycling conditions.', badge: 'Safe' },
-        ventilation: { status: 'Safe', tip: 'Safe to ventilate rooms.', badge: 'Safe' },
-      };
-    } else if (aqi <= 200) {
-      return {
-        verdict: 'Acceptable with Caution for Sensitive Groups',
-        running: { status: 'Caution', tip: 'Healthy individuals can run. Sensitive runners should consider shorter workouts.', badge: 'Caution' },
-        walking: { status: 'Safe', tip: 'Normal outdoor walking is safe for most people.', badge: 'Safe' },
-        children: { status: 'Caution', tip: 'Children with asthma should take frequent breaks during play.', badge: 'Caution' },
-        cycling: { status: 'Caution', tip: 'Prefer less congested routes away from highway traffic.', badge: 'Caution' },
-        ventilation: { status: 'Caution', tip: 'Ventilate during mid-day when the air is clearest.', badge: 'Caution' },
-      };
-    } else if (aqi <= 300) {
-      return {
-        verdict: 'Unhealthy : Limit Prolonged Outdoor Exertion',
-        running: { status: 'Avoid', tip: 'Avoid strenuous outdoor running; switch to an indoor treadmill.', badge: 'Avoid' },
-        walking: { status: 'Caution', tip: 'Wear a well-fitted N95 mask if walking near busy roads.', badge: 'Caution' },
-        children: { status: 'Avoid', tip: 'Keep children indoors, especially during evening hours.', badge: 'Avoid' },
-        cycling: { status: 'Avoid', tip: 'Avoid vigorous road cycling until air clears.', badge: 'Avoid' },
-        ventilation: { status: 'Avoid', tip: 'Keep windows closed and run an air purifier if available.', badge: 'Avoid' },
-      };
-    } else {
-      return {
-        verdict: 'Hazardous Air : Stay Indoors When Possible',
-        running: { status: 'Avoid', tip: 'Do not exercise outdoors under any circumstances.', badge: 'Avoid' },
-        walking: { status: 'Avoid', tip: 'Limit outdoor movement strictly to essential trips.', badge: 'Avoid' },
-        children: { status: 'Avoid', tip: 'Children, seniors, and heart/lung patients should remain inside.', badge: 'Avoid' },
-        cycling: { status: 'Avoid', tip: 'Avoid all outdoor cycling.', badge: 'Avoid' },
-        ventilation: { status: 'Avoid', tip: 'Keep all doors and windows tightly shut.', badge: 'Avoid' },
-      };
-    }
+  const selectCity = (city: string) => {
+    setLocationStation(null);
+    setSelectedCity(city);
+    setGeoMessage(null);
   };
 
-  const advice = getActivityAdvice(reading.aqi);
-
-  // Plain language summary
-  const getPlainLanguageExplanation = (stationName: string, aqi: number) => {
-    if (aqi <= 100) {
-      return {
-        lead: `Air around ${stationName} is clear and healthy today.`,
-        bullets: [
-          'Favorable wind speeds are dispersing vehicle and industrial emissions.',
-          'Particulate levels (PM2.5) are well within national clean air standards.',
-          'Great day to plan outdoor family activities or sports.',
-        ],
-      };
-    } else if (aqi <= 200) {
-      return {
-        lead: `Air around ${stationName} is moderately dusty today.`,
-        bullets: [
-          'Rush-hour traffic and road dust are the primary contributors.',
-          'Gentle winds are allowing fine combustion smoke to accumulate slowly.',
-          'Air quality is safe for most healthy people, but sensitive individuals may feel mild irritation.',
-        ],
-      };
-    } else {
-      return {
-        lead: `Air around ${stationName} is heavily polluted today.`,
-        bullets: [
-          'A night-time temperature inversion has trapped smoke close to street level.',
-          'High concentration of fine combustion particulates (PM2.5) is present.',
-          'Stay indoors when possible and wear an N95 mask outdoors.',
-        ],
-      };
-    }
-  };
-
-  const plainSummary = getPlainLanguageExplanation(station.station_name, reading.aqi);
+  if (loading && !selected) {
+    return (
+      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div className="card-data-dashboard p-8 flex items-center gap-4">
+          <RefreshCw className="w-5 h-5 text-[#ff682c] animate-spin" />
+          <div>
+            <div className="font-mono text-xs uppercase text-[#202020]">Loading AirSense intelligence</div>
+            <div className="text-xs text-[#828282] mt-1">Reading persisted DWM and ML artifacts through FastAPI.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-      {/* Top Welcome Bar for Citizens */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[#efefef] pb-4">
         <div>
           <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#816729] flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-[#ff682c]" />
             Citizen Clean Air Portal
           </div>
-          <h1 className="font-display font-normal text-3xl sm:text-4xl text-[#202020] tracking-[-0.02em] mt-1">
-            Personal Air Intelligence
-          </h1>
-          <p className="text-xs text-[#828282] font-sans mt-0.5">
-            Clear, honest air quality for your daily routine : {station.station_name}, {station.city}
-          </p>
+          <h1 className="font-display font-normal text-3xl sm:text-4xl text-[#202020] tracking-[-0.02em] mt-1">Personal Air Intelligence</h1>
+          <p className="text-xs text-[#828282] font-sans mt-0.5">Real city-level analytical output served by the AirSense backend.</p>
         </div>
-
-        {/* User Identity or Quick Sign In */}
         <div className="flex items-center gap-3">
           <div className="text-right hidden sm:block">
             <div className="text-xs font-sans text-[#202020] font-medium flex items-center gap-1.5 justify-end">
               <User className="w-3.5 h-3.5 text-[#ff682c]" />
               {user ? user.name : 'Citizen Guest'}
             </div>
-            <div className="text-[10px] font-mono text-[#828282]">{currentTimeStr}</div>
+            <div className="text-[10px] font-mono text-[#828282]">{currentTime}</div>
           </div>
-          <Link
-            href="/login?role=admin"
-            className="btn-ghost-sharp text-xs font-mono py-1.5 px-3 text-[#4d4d4d] hover:text-[#202020]"
-          >
-            Admin Sign In →
-          </Link>
+          <DemoBadge label="REAL BACKEND DATA" />
+          <button type="button" onClick={() => { setRefreshing(true); setError(null); void loadDashboard(); }} disabled={refreshing} className="btn-ghost-sharp text-xs font-mono py-1.5 px-3 flex items-center gap-2">
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
       </div>
 
-      {/* Quick City Switcher Bar */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs font-mono text-[#828282]">
-          <span>Select Your City:</span>
-          <button
-            onClick={handleUseMyLocation}
-            disabled={geoLocating}
-            className="text-[#ff682c] hover:underline flex items-center gap-1 cursor-pointer"
-          >
-            <Navigation className="w-3 h-3" />
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 text-xs font-mono text-red-700 flex items-start gap-3">
+          <AlertTriangle className="w-4 h-4 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <div className="card-data-dashboard p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#816729]">Location & Context</div>
+            <p className="text-xs text-[#828282] mt-1">Choose a real city-level record or resolve the nearest monitored station from your browser location.</p>
+          </div>
+          <button type="button" onClick={handleUseMyLocation} disabled={geoLocating} className="text-[#ff682c] hover:underline flex items-center gap-2 text-xs font-mono">
+            <Navigation className="w-3.5 h-3.5" />
             {geoLocating ? 'Locating...' : 'Use My Current Location'}
           </button>
         </div>
 
         <div className="flex flex-wrap gap-1.5">
-          {popularCities.map((c) => {
-            const isSelected = selectedStationId === c.stationId;
-            return (
-              <button
-                key={c.stationId}
-                onClick={() => {
-                  setSelectedStationId(c.stationId);
-                  updatePreferredStation(c.stationId);
-                }}
-                className={`px-3 py-1.5 text-xs font-mono transition-all rounded-none ${
-                  isSelected
-                    ? 'bg-[#202020] text-white font-medium'
-                    : 'bg-[#f5f5f5] text-[#4d4d4d] hover:bg-[#efefef]'
-                }`}
-              >
-                {c.label}
-              </button>
-            );
-          })}
-
-          <div className="ml-auto flex items-center gap-1.5 text-xs font-mono">
-            <span className="text-[#828282] hidden md:inline">Or Pick Station:</span>
-            <select
-              value={selectedStationId}
-              onChange={(e) => {
-                setSelectedStationId(e.target.value);
-                updatePreferredStation(e.target.value);
-              }}
-              className="bg-[#f5f5f5] border border-[#efefef] px-2 py-1 text-xs text-[#202020] font-mono rounded-none"
-            >
-              {MONITORED_STATIONS.map((s) => (
-                <option key={s.station_id} value={s.station_id}>
-                  {s.city} : {s.station_name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {geoMessage && (
-          <div className="p-2.5 bg-[#f5f5f5] border border-[#efefef] text-xs font-sans text-[#4d4d4d]">
-            {geoMessage}
-          </div>
-        )}
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 1. HERO VERDICT: SIMPLE, JARGON-FREE AQI VERDICT */}
-      {/* ========================================================================= */}
-      <div className="card-data-dashboard p-6 sm:p-8 space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div className="space-y-2 max-w-xl">
-            <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#ff682c]">
-              Right Now : Verified Station Reading
-            </div>
-            <h2 className="font-display font-normal text-2xl sm:text-3xl text-[#202020] tracking-[-0.02em]">
-              Air Quality is <span className="font-medium">{reading.aqi_category}</span> in {station.city}
-            </h2>
-            <p className="text-xs sm:text-sm text-[#4d4d4d] font-sans leading-relaxed">
-              {CPCB_AQI_CATEGORIES[reading.aqi_category]?.healthStatement || 'Air quality is monitored according to standard CPCB protocols.'}
-            </p>
-          </div>
-
-          {/* Big High-Contrast AQI Indicator */}
-          <div className="flex flex-col items-center sm:items-end p-5 bg-[#f5f5f5] border border-[#efefef] card-asymmetric min-w-[200px]">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[#828282]">
-              Official CPCB Index
-            </span>
-            <div className="text-5xl font-mono text-[#202020] font-normal my-1">
-              {reading.aqi}
-            </div>
-            <AqiBadge category={reading.aqi_category} size="md" />
-            <div className="text-[10px] font-mono text-[#828282] mt-2">
-              Primary Stressor: <span className="text-[#202020] font-medium">{reading.dominant_pollutant}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Clean Golden Outdoor Window Advice */}
-        <div className="p-4 bg-[#ebe6dd] border border-[#e0dacd] card-asymmetric flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-          <div className="space-y-0.5">
-            <div className="text-[10px] font-mono text-[#816729] uppercase tracking-wider font-medium flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#ff682c]" />
-              Best Outdoor Breathing Window Today
-            </div>
-            <div className="text-xs text-[#202020] font-sans">
-              <strong>06:30 AM to 08:30 AM</strong> has the lowest particulate density (AQI ~85). Plan outdoor workouts and school commutes during this window.
-            </div>
-          </div>
-          <Link
-            href="/explain"
-            className="text-xs font-mono text-[#202020] link-ember-underline flex-shrink-0"
-          >
-            Why is this? →
-          </Link>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 2. ACTIVITY ADVISOR: "SHOULD I GO OUTSIDE RIGHT NOW?" */}
-      {/* ========================================================================= */}
-      <div className="card-data-dashboard p-6 sm:p-8 space-y-6">
-        <div className="border-b border-[#efefef] pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-          <div>
-            <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#ff682c] mb-1">
-              Daily Routine Planning
-            </div>
-            <h2 className="font-display font-normal text-2xl text-[#202020] tracking-[-0.02em]">
-              Can I Exercise or Spend Time Outdoors Right Now?
-            </h2>
-          </div>
-          <div className="text-xs font-mono text-[#828282]">
-            Overall Status: <span className="text-[#202020] font-medium">{advice.verdict}</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-          {/* Running */}
-          <div className="p-4 border border-[#efefef] bg-[#f5f5f5] card-asymmetric space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="font-sans text-xs font-medium text-[#202020]">Jogging &amp; Running</span>
-              <span className={`px-2 py-0.5 text-[10px] font-mono font-medium ${
-                advice.running.badge === 'Safe' ? 'bg-white text-emerald-700 border border-[#e8e8e8]' :
-                advice.running.badge === 'Caution' ? 'bg-[#ff682c]/10 text-[#ff682c]' : 'bg-[#202020] text-white'
-              }`}>
-                {advice.running.status}
-              </span>
-            </div>
-            <p className="text-[11px] text-[#4d4d4d] font-sans leading-relaxed">
-              {advice.running.tip}
-            </p>
-          </div>
-
-          {/* Walking */}
-          <div className="p-4 border border-[#efefef] bg-[#f5f5f5] card-asymmetric space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="font-sans text-xs font-medium text-[#202020]">Walking &amp; Commute</span>
-              <span className={`px-2 py-0.5 text-[10px] font-mono font-medium ${
-                advice.walking.badge === 'Safe' ? 'bg-white text-emerald-700 border border-[#e8e8e8]' :
-                advice.walking.badge === 'Caution' ? 'bg-[#ff682c]/10 text-[#ff682c]' : 'bg-[#202020] text-white'
-              }`}>
-                {advice.walking.status}
-              </span>
-            </div>
-            <p className="text-[11px] text-[#4d4d4d] font-sans leading-relaxed">
-              {advice.walking.tip}
-            </p>
-          </div>
-
-          {/* Children & Elderly */}
-          <div className="p-4 border border-[#efefef] bg-[#f5f5f5] card-asymmetric space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="font-sans text-xs font-medium text-[#202020]">Kids &amp; Elderly</span>
-              <span className={`px-2 py-0.5 text-[10px] font-mono font-medium ${
-                advice.children.badge === 'Safe' ? 'bg-white text-emerald-700 border border-[#e8e8e8]' :
-                advice.children.badge === 'Caution' ? 'bg-[#ff682c]/10 text-[#ff682c]' : 'bg-[#202020] text-white'
-              }`}>
-                {advice.children.status}
-              </span>
-            </div>
-            <p className="text-[11px] text-[#4d4d4d] font-sans leading-relaxed">
-              {advice.children.tip}
-            </p>
-          </div>
-
-          {/* Cycling */}
-          <div className="p-4 border border-[#efefef] bg-[#f5f5f5] card-asymmetric space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="font-sans text-xs font-medium text-[#202020]">Road Cycling</span>
-              <span className={`px-2 py-0.5 text-[10px] font-mono font-medium ${
-                advice.cycling.badge === 'Safe' ? 'bg-white text-emerald-700 border border-[#e8e8e8]' :
-                advice.cycling.badge === 'Caution' ? 'bg-[#ff682c]/10 text-[#ff682c]' : 'bg-[#202020] text-white'
-              }`}>
-                {advice.cycling.status}
-              </span>
-            </div>
-            <p className="text-[11px] text-[#4d4d4d] font-sans leading-relaxed">
-              {advice.cycling.tip}
-            </p>
-          </div>
-
-          {/* Windows / Home Ventilation */}
-          <div className="p-4 border border-[#efefef] bg-[#f5f5f5] card-asymmetric space-y-2">
-            <div className="flex justify-between items-center">
-              <span className="font-sans text-xs font-medium text-[#202020]">Home Windows</span>
-              <span className={`px-2 py-0.5 text-[10px] font-mono font-medium ${
-                advice.ventilation.badge === 'Safe' ? 'bg-white text-emerald-700 border border-[#e8e8e8]' :
-                advice.ventilation.badge === 'Caution' ? 'bg-[#ff682c]/10 text-[#ff682c]' : 'bg-[#202020] text-white'
-              }`}>
-                {advice.ventilation.status}
-              </span>
-            </div>
-            <p className="text-[11px] text-[#4d4d4d] font-sans leading-relaxed">
-              {advice.ventilation.tip}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 3. SIMPLIFIED 12-HOUR OUTLOOK TIMELINE */}
-      {/* ========================================================================= */}
-      <div className="card-data-dashboard p-6 sm:p-8 space-y-6">
-        <div className="border-b border-[#efefef] pb-4 flex justify-between items-center">
-          <div>
-            <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#816729] mb-1">
-              Hourly Outlook
-            </div>
-            <h2 className="font-display font-normal text-2xl text-[#202020] tracking-[-0.02em]">
-              Next 12 Hours Forecast Timeline
-            </h2>
-          </div>
-          <span className="text-xs font-mono text-[#828282]">Probabilistic XGBoost Model</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-          {forecast.slice(0, 6).map((point) => (
-            <div
-              key={point.forecast_hour}
-              className="p-3.5 bg-[#f5f5f5] border border-[#efefef] card-asymmetric flex flex-col justify-between space-y-3"
-            >
-              <div>
-                <div className="text-[10px] font-mono text-[#828282] uppercase">
-                  +{point.forecast_hour} Hour{point.forecast_hour > 1 ? 's' : ''}
-                </div>
-                <div className="text-xs font-mono text-[#202020] font-medium">{point.timestamp}</div>
-              </div>
-
-              <div>
-                <div className="text-2xl font-mono text-[#202020] font-normal">{point.predicted_aqi}</div>
-                <div className="text-[10px] font-mono text-[#ff682c] mt-0.5">{point.predicted_category}</div>
-              </div>
-
-              <div className="text-[10px] text-[#828282] font-sans pt-1 border-t border-[#efefef]">
-                Interval: {point.confidence_interval_low} - {point.confidence_interval_high}
-              </div>
-            </div>
+          {cities.slice(0, 10).map((city) => (
+            <button key={city.city_name} type="button" onClick={() => selectCity(city.city_name)} className={`px-3 py-1.5 text-xs font-mono rounded-none ${!locationStation && selectedCity === city.city_name ? 'bg-[#202020] text-white font-medium' : 'bg-[#f5f5f5] text-[#4d4d4d] hover:bg-[#efefef]'}`}>
+              {city.city_name}
+            </button>
           ))}
+          <select value={selectedCity} onChange={(event) => selectCity(event.target.value)} className="ml-auto bg-[#f5f5f5] border border-[#efefef] px-2 py-1.5 text-xs text-[#202020] font-mono rounded-none">
+            {locationStation?.city && !cities.some((city) => city.city_name === locationStation.city) && (
+              <option value={locationStation.city}>{locationStation.city} · nearest station</option>
+            )}
+            {cities.map((city) => <option key={city.city_name} value={city.city_name}>{city.city_name}</option>)}
+          </select>
         </div>
+
+        {geoMessage && <div className="p-3 bg-[#f5f5f5] border border-[#efefef] text-xs font-sans text-[#4d4d4d]">{geoMessage}</div>}
       </div>
 
-      {/* ========================================================================= */}
-      {/* 4. "WHY IS THE AIR LIKE THIS TODAY?" (PLAIN ENGLISH) */}
-      {/* ========================================================================= */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
-        <div className="card-data-dashboard p-6 sm:p-8 space-y-4 flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#ff682c]">
-              Understanding The Cause
-            </div>
-            <h3 className="font-display font-normal text-xl text-[#202020] tracking-[-0.01em]">
-              {plainSummary.lead}
-            </h3>
-            <ul className="space-y-2 text-xs text-[#4d4d4d] font-sans leading-relaxed">
-              {plainSummary.bullets.map((b, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#ff682c] mt-1.5 flex-shrink-0" />
-                  <span>{b}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="pt-3 border-t border-[#efefef] flex justify-between items-center text-xs font-mono">
-            <span className="text-[#828282]">Want technical feature weights?</span>
-            <Link href="/explain" className="text-[#202020] link-ember-underline">
-              Inspect TreeSHAP Report →
-            </Link>
-          </div>
-        </div>
-
-        {/* Historical Context Comparison */}
-        <div className="card-data-dashboard p-6 sm:p-8 space-y-4 flex flex-col justify-between">
-          <div className="space-y-3">
-            <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#816729]">
-              Long-Term Context (2009 to 2026)
-            </div>
-            <h3 className="font-display font-normal text-xl text-[#202020] tracking-[-0.01em]">
-              Is Today&apos;s Air Normal for {station.city}?
-            </h3>
-            <p className="text-xs text-[#4d4d4d] font-sans leading-relaxed">
-              Across 17 years of continuous CPCB and US Diplomatic monitoring records, today&apos;s reading is 
-              <strong> 12% lower than the historical seasonal March average (158 AQI)</strong> for this station. 
-              Air quality improves progressively as the pre-monsoon coastal breeze gains strength.
-            </p>
-          </div>
-
-          <div className="pt-3 border-t border-[#efefef] flex justify-between items-center text-xs font-mono">
-            <span className="text-[#828282]">Historical Trend Archives</span>
-            <Link href="/analytics" className="text-[#202020] link-ember-underline">
-              Explore 17-Year Analytics →
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* 5. OPTIONAL TECHNICAL EXPANDER: "POLLUTANT SUB-INDEX BREAKDOWN" */}
-      {/* ========================================================================= */}
-      <div className="card-asymmetric p-6 bg-white border border-[#efefef] space-y-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <div className="text-sm font-sans font-medium text-[#202020]">
-              Detailed Pollutant Concentrations (For Curious Citizens)
-            </div>
-            <p className="text-xs text-[#828282] font-sans">
-              View individual chemical sub-indices (PM2.5, PM10, Nitrogen Dioxide, Ozone, Carbon Monoxide).
-            </p>
-          </div>
-          <button
-            onClick={() => setShowDetailedPollutants(!showDetailedPollutants)}
-            className="btn-ghost-sharp text-xs font-mono px-3 py-1.5 text-[#202020] flex items-center gap-1.5"
-          >
-            {showDetailedPollutants ? 'Hide Chemical Details' : 'Show Chemical Details'}
-            {showDetailedPollutants ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5 text-[#ff682c]" />}
-          </button>
-        </div>
-
-        {showDetailedPollutants && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-3 border-t border-[#efefef]">
-            {reading.pollutants.slice(0, 6).map((p) => (
-              <div key={p.pollutant_name} className="p-3 bg-[#f5f5f5] border border-[#efefef] card-asymmetric">
-                <div className="text-[10px] font-mono text-[#828282] uppercase">{p.pollutant_name}</div>
-                <div className="text-lg font-mono text-[#202020] font-medium mt-1">
-                  {p.value} <span className="text-[10px] font-sans text-[#828282]">{p.unit}</span>
+      {selected && (
+        <>
+          <div className="card-data-dashboard p-6 sm:p-8 space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+              <div className="space-y-3 max-w-xl">
+                <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#ff682c]">
+                  {locationStation ? 'Nearest Station Reading' : 'Persisted City Reading'}
                 </div>
-                <div className="text-[10px] font-mono text-[#ff682c] mt-1">
-                  Sub-Index: {p.sub_index}
+                <h2 className="font-display font-normal text-2xl sm:text-3xl text-[#202020] tracking-[-0.02em]">Air Quality is <span className="font-medium">{category}</span> in {selected.city_name}</h2>
+                <p className="text-xs sm:text-sm text-[#4d4d4d] font-sans leading-relaxed">{CPCB_AQI_CATEGORIES[category]?.healthStatement || 'AQI category returned by the AirSense analytical layer.'}</p>
+                <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono text-[#828282]">
+                  <span className="flex items-center gap-1.5"><MapPin className="w-3 h-3 text-[#ff682c]" />{selected.city_name}</span>
+                  {locationStation ? (
+                    <>
+                      <span>{locationStation.station_name}</span>
+                      <span>{locationStation.distance_km?.toFixed(1) ?? '—'} km away</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-[#ff682c]" />{formatDate(selected.pollution_date)}</span>
+                      <span>latest_city_air_quality.csv</span>
+                    </>
+                  )}
                 </div>
               </div>
-            ))}
+
+              <div className="flex flex-col items-center sm:items-end p-5 bg-[#f5f5f5] border border-[#efefef] card-asymmetric min-w-[220px]">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-[#828282]">AQI Estimate</span>
+                <div className="text-5xl font-mono text-[#202020] font-normal my-1">{Math.round(aqi)}</div>
+                <AqiBadge category={category} size="md" />
+                <div className="text-[10px] font-mono text-[#828282] mt-2 text-right">Dominant pollutant: <span className="text-[#202020] font-medium">{dominantPollutant}</span></div>
+              </div>
+            </div>
+
+            <div className="p-4 bg-[#ebe6dd] border border-[#e0dacd] card-asymmetric">
+              <div className="text-[10px] font-mono text-[#816729] uppercase tracking-wider font-medium">
+                {locationStation ? 'Nearest station AQI reading' : 'What the current city dataset says'}
+              </div>
+              <div className="text-xs text-[#202020] font-sans mt-1">AQI <strong>{aqi.toFixed(1)}</strong> · Category <strong>{category}</strong> · Dominant pollutant <strong>{dominantPollutant}</strong></div>
+            </div>
           </div>
-        )}
-      </div>
+
+          <HealthGuidance
+            aqi={aqi}
+            city={selected.city_name}
+            pm25TwentyFourHourMean={pm25TwentyFourHourMean}
+          />
+
+          <div className="card-data-dashboard p-6 sm:p-8 space-y-6">
+            <div className="border-b border-[#efefef] pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+              <div>
+                <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#ff682c] mb-1">Daily Routine Planning</div>
+                <h2 className="font-display font-normal text-2xl text-[#202020] tracking-[-0.02em]">Can I Exercise or Spend Time Outdoors?</h2>
+              </div>
+              <div className="text-xs font-mono text-[#828282]">Status: <span className="text-[#202020] font-medium">{chosenActivity.status}</span></div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {ACTIVITIES.map(([key, label]) => (
+                <button key={key} type="button" onClick={() => setSelectedActivity(key)} className={`px-3 py-1.5 text-xs font-mono rounded-none ${selectedActivity === key ? 'bg-[#202020] text-white' : 'bg-[#f5f5f5] text-[#4d4d4d]'}`}>{label}</button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+              {ACTIVITIES.map(([key, label]) => (
+                <button key={`${key}-card`} type="button" onClick={() => setSelectedActivity(key)} className={`text-left p-4 border bg-[#f5f5f5] card-asymmetric space-y-2 ${selectedActivity === key ? 'border-[#ff682c]' : 'border-[#efefef]'}`}>
+                  <div className="flex justify-between items-center gap-2"><span className="font-sans text-xs font-medium text-[#202020]">{label}</span><span className={`px-2 py-0.5 text-[10px] font-mono font-medium ${statusClass(advice[key].status)}`}>{advice[key].status}</span></div>
+                  <p className="text-[11px] text-[#4d4d4d] font-sans leading-relaxed">{advice[key].tip}</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="p-4 border border-[#efefef] bg-white flex items-start gap-3">
+              <Activity className="w-4 h-4 text-[#ff682c] mt-0.5 flex-shrink-0" />
+              <div>
+                <div className="text-[10px] font-mono uppercase text-[#816729]">Selected activity</div>
+                <div className="text-sm text-[#202020] mt-1">{ACTIVITIES.find(([key]) => key === selectedActivity)?.[1]}</div>
+                <div className="text-xs text-[#4d4d4d] mt-1">{chosenActivity.tip}</div>
+              </div>
+            </div>
+
+            {activityRows.length > 0 && (
+              <div className="text-[10px] font-mono text-[#828282]">Activity analytics artifact available: {activityRows.length} records returned by the backend.</div>
+            )}
+          </div>
+
+          <div className="card-data-dashboard p-6 sm:p-8 space-y-6">
+            <div className="border-b border-[#efefef] pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+              <div>
+                <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#816729] mb-1">Model Output</div>
+                <h2 className="font-display font-normal text-2xl text-[#202020] tracking-[-0.02em]">Stored 24-Point AQI Forecast</h2>
+              </div>
+              <span className="text-xs font-mono text-[#828282]">XGBoost artifact</span>
+            </div>
+
+            {locationStation ? (
+              <div className="p-5 bg-[#f5f5f5] border border-[#efefef] text-xs text-[#828282]">
+                The saved forecast is not associated with this nearest station, so it is hidden to avoid presenting another location&apos;s forecast as local.
+              </div>
+            ) : forecast.length === 0 ? (
+              <div className="p-5 bg-[#f5f5f5] border border-[#efefef] text-xs text-[#828282]">Forecast data is not currently available from the backend.</div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                  {forecast.filter((point) => [1, 3, 6, 12, 18, 24].includes(Number(point.horizon_hours))).map((point) => {
+                    const pointCategory = safeCategory(point.aqi_category, point.predicted_aqi);
+                    return (
+                      <div key={point.horizon_hours} className="p-3.5 bg-[#f5f5f5] border border-[#efefef] card-asymmetric space-y-3">
+                        <div><div className="text-[10px] font-mono text-[#828282] uppercase">+{point.horizon_hours}h</div><div className="text-[10px] font-mono text-[#202020] mt-1">{formatDateTime(point.period_start)}</div></div>
+                        <div><div className="text-2xl font-mono text-[#202020]">{Math.round(point.predicted_aqi)}</div><div className="text-[10px] font-mono text-[#ff682c] mt-0.5">{pointCategory}</div></div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="p-4 bg-[#f5f5f5] border border-[#efefef] text-[10px] font-mono text-[#828282] space-y-1">
+                  <div>Forecast artifact starts: {formatDateTime(forecast[0].period_start)}</div>
+                  <div>Forecast artifact ends: {formatDateTime(forecast[forecast.length - 1].period_start)}</div>
+                  <div>The timestamps above are displayed exactly as returned by the saved model output.</div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+            <div className="card-data-dashboard p-6 sm:p-8 space-y-5">
+              <div>
+                <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#ff682c]">Historical Context</div>
+                <h3 className="font-display font-normal text-xl text-[#202020] tracking-[-0.01em] mt-1">Is this normal for {selected.city_name}?</h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-[#f5f5f5] border border-[#efefef]"><div className="text-[10px] font-mono text-[#828282] uppercase">Current AQI</div><div className="text-2xl font-mono text-[#202020] mt-1">{aqi.toFixed(1)}</div></div>
+                <div className="p-3 bg-[#f5f5f5] border border-[#efefef]"><div className="text-[10px] font-mono text-[#828282] uppercase">Baseline</div><div className="text-2xl font-mono text-[#202020] mt-1">{historicalMean === null ? '—' : historicalMean.toFixed(1)}</div></div>
+              </div>
+
+              {deviation !== null && <div className="text-xs font-mono text-[#4d4d4d]">Deviation: <span className="text-[#202020] font-medium">{deviation.toFixed(1)}</span></div>}
+
+              <p className="text-xs text-[#4d4d4d] font-sans leading-relaxed">
+                {locationStation
+                  ? 'City-level historical baseline is not available for this station reading.'
+                  : 'The baseline section is populated from the persisted AirSense analytical artifact when the backend returns a matching city record.'}
+              </p>
+
+              <Link href="/analytics" className="text-xs font-mono text-[#202020] link-ember-underline inline-flex items-center gap-2">Explore warehouse history <ArrowRight className="w-3.5 h-3.5" /></Link>
+            </div>
+
+            <div className="card-data-dashboard p-6 sm:p-8 space-y-5">
+              <div>
+                <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#816729]">Why is the air like this?</div>
+                <h3 className="font-display font-normal text-xl text-[#202020] tracking-[-0.01em] mt-1">Dominant pollutant: {dominantPollutant}</h3>
+              </div>
+
+              {explainForCity.length > 0 ? (
+                <div className="space-y-3">
+                  {explainForCity.slice(0, 4).map((row, index) => (
+                    <div key={index} className="p-3 bg-[#f5f5f5] border border-[#efefef]">
+                      {recordEntries(row).map(([key, value]) => (
+                        <div key={key} className="flex justify-between gap-3 py-1 border-b border-[#e8e8e8] last:border-b-0">
+                          <span className="text-[10px] font-mono text-[#828282]">{key.replace(/_/g, ' ')}</span>
+                          <span className="text-[10px] font-mono text-[#202020] text-right max-w-[65%] break-words">{String(value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-[#4d4d4d] font-sans leading-relaxed">The current city artifact exposes AQI and dominant pollutant. Additional explainability evidence is available on the Explain page when returned by the backend.</p>
+              )}
+
+              <Link href="/explain" className="text-xs font-mono text-[#202020] link-ember-underline inline-flex items-center gap-2">Open explainability workspace <ArrowRight className="w-3.5 h-3.5" /></Link>
+            </div>
+          </div>
+
+          <div className="card-asymmetric p-6 bg-white border border-[#efefef] space-y-4">
+            <div className="flex justify-between items-center gap-4">
+              <div>
+                <div className="text-sm font-sans font-medium text-[#202020]">Analytical Evidence</div>
+                <p className="text-xs text-[#828282] font-sans mt-1">Inspect the exact baseline and explainability fields returned by the backend.</p>
+              </div>
+              <button type="button" onClick={() => setShowDetails((value) => !value)} className="btn-ghost-sharp text-xs font-mono px-3 py-1.5 text-[#202020] flex items-center gap-1.5">
+                {showDetails ? 'Hide Details' : 'Show Details'}
+                {showDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5 text-[#ff682c]" />}
+              </button>
+            </div>
+
+            {showDetails && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-3 border-t border-[#efefef]">
+                <div className="space-y-3">
+                  <div className="text-[10px] font-mono uppercase text-[#816729]">Baseline Artifact</div>
+                  {baselineForCity.length === 0 ? <div className="text-xs text-[#828282]">No baseline records returned.</div> : baselineForCity.slice(0, 4).map((row, index) => (
+                    <div key={index} className="p-3 bg-[#f5f5f5] border border-[#efefef]">
+                      {recordEntries(row).map(([key, value]) => <div key={key} className="flex justify-between gap-3 py-1 border-b border-[#e8e8e8] last:border-b-0"><span className="text-[10px] font-mono text-[#828282]">{key.replace(/_/g, ' ')}</span><span className="text-[10px] font-mono text-[#202020] text-right">{String(value)}</span></div>)}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="text-[10px] font-mono uppercase text-[#816729]">Explainability Artifact</div>
+                  {explainForCity.length === 0 ? <div className="text-xs text-[#828282]">No explainability records returned.</div> : explainForCity.slice(0, 4).map((row, index) => (
+                    <div key={index} className="p-3 bg-[#f5f5f5] border border-[#efefef]">
+                      {recordEntries(row).map(([key, value]) => <div key={key} className="flex justify-between gap-3 py-1 border-b border-[#e8e8e8] last:border-b-0"><span className="text-[10px] font-mono text-[#828282]">{key.replace(/_/g, ' ')}</span><span className="text-[10px] font-mono text-[#202020] text-right max-w-[65%] break-words">{String(value)}</span></div>)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="card-data-dashboard p-6 border border-[#efefef]">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+              <div>
+                <div className="text-[10px] font-mono uppercase text-[#828282]">Backend data lineage</div>
+                <div className="text-sm text-[#202020] mt-1">Colab artifact → FastAPI → Next.js</div>
+                <div className="text-[10px] text-[#828282] font-mono mt-1 break-all">{API_BASE}</div>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[10px] font-mono">
+                <span className="px-2.5 py-1 bg-[#f5f5f5] border border-[#e8e8e8]">latest_city_air_quality.csv</span>
+                <span className="px-2.5 py-1 bg-[#f5f5f5] border border-[#e8e8e8]">aqi_forecast_next_24h.parquet</span>
+                <span className="px-2.5 py-1 bg-[#f5f5f5] border border-[#e8e8e8]">DWM + ML</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="card-asymmetric p-5 border border-[#efefef]">
+            <div className="flex items-start gap-3">
+              <Database className="w-4 h-4 text-[#816729] mt-0.5" />
+              <div>
+                <div className="text-[10px] font-mono uppercase text-[#816729]">Dataset timestamp</div>
+                <div className="text-xs text-[#202020] mt-1">This city-level artifact is dated <strong>{formatDate(selected.pollution_date)}</strong>.</div>
+                <p className="text-[10px] text-[#828282] font-sans mt-1 leading-relaxed">The UI displays the saved backend timestamp as returned instead of presenting it as a live sensor timestamp.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-[#f5f5f5] border border-[#efefef] flex items-start gap-3">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5" />
+            <div>
+              <div className="text-[10px] font-mono uppercase text-[#816729]">Real data connection</div>
+              <div className="text-xs text-[#202020] mt-1">This page no longer reads AQI values or station readings from <code className="font-mono">mock-data.ts</code>.</div>
+            </div>
+          </div>
+        </>
+      )}
 
       <DisclaimerBanner />
     </div>

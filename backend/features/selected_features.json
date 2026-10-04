@@ -1,0 +1,20 @@
+[
+  "PM2.5",
+  "PM2.5_subindex",
+  "aqi_lag_1",
+  "aqi_rolling_mean_3",
+  "PM10",
+  "aqi_rolling_mean_7",
+  "PM10_subindex",
+  "PM2_5_rolling_mean_7",
+  "PM2_5_lag_1",
+  "PM2_5_rolling_mean_3",
+  "aqi_lag_3",
+  "PM2_5_rolling_mean_14",
+  "PM10_lag_1",
+  "PM10_rolling_mean_3",
+  "PM10_rolling_mean_7",
+  "CO",
+  "CO_subindex",
+  "day_of_year"
+]
