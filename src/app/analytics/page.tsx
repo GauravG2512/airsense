@@ -1,325 +1,580 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { DemoBadge } from '@/components/ui/DemoBadge';
-import { AqiBadge } from '@/components/ui/AqiBadge';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { DisclaimerBanner } from '@/components/ui/DisclaimerBanner';
-import { AqiCategory } from '@/lib/api';
-import { ALL_15_POLLUTANTS } from '@/lib/mock-data';
+import { getAqiCategory } from '@/lib/api';
+import {
+  AqiHeatmap,
+  ChartCardWithPlot,
+  LineChart,
+  Scatter3DChart,
+  ScatterChart,
+  type AnalyticsChartsData,
+  type ChartRecord,
+  type LineSeries,
+} from '@/components/analytics/NotebookCharts';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const SERIES_COLORS = [
+  '#ff682c',
+  '#0284c7',
+  '#16a34a',
+  '#7c3aed',
+  '#d97706',
+  '#0891b2',
+  '#db2777',
+  '#4f46e5',
+];
+const EMPTY_CHART_RECORDS: ChartRecord[] = [];
+
+function numericValue(row: ChartRecord, key: string) {
+  const value = row[key];
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 export default function AnalyticsPage() {
-  const [selectedCity, setSelectedCity] = useState<string>('All Cities');
-  const [selectedPollutant, setSelectedPollutant] = useState<string>('PM2.5');
-  const [selectedSeason, setSelectedSeason] = useState<string>('All Seasons');
-  const [selectedYearRange, setSelectedYearRange] = useState<string>('2015-2026');
+  const [charts, setCharts] = useState<AnalyticsChartsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [analysisCity, setAnalysisCity] = useState('Delhi');
+  const [pollutionMetric, setPollutionMetric] = useState<'average_aqi' | 'average_pm25'>('average_aqi');
+  const [leaderboardYear, setLeaderboardYear] = useState<number | null>(null);
 
-  const cities = ['All Cities', 'Delhi', 'Mumbai', 'Bengaluru', 'Pune', 'Hyderabad', 'Kolkata', 'Chennai', 'Lucknow', 'Patna'];
-  const seasons = ['All Seasons', 'Winter (Nov-Feb)', 'Summer (Mar-Jun)', 'Monsoon (Jul-Sep)', 'Post-Monsoon (Oct)'];
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${API_BASE}/api/analytics/visualizations`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`AirSense API ${response.status}: ${await response.text()}`);
+        }
+        return response.json() as Promise<AnalyticsChartsData>;
+      })
+      .then(setCharts)
+      .catch((requestError: unknown) => {
+        if (!controller.signal.aborted) {
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : `Unable to reach the AirSense API at ${API_BASE}.`
+          );
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
 
-  const yearlyTrends = [
-    { year: '2009', avg: 104.2, min: 38.0, max: 284.1 },
-    { year: '2011', avg: 108.5, min: 41.2, max: 312.4 },
-    { year: '2013', avg: 112.1, min: 44.5, max: 340.6 },
-    { year: '2015', avg: 116.8, min: 46.2, max: 388.0 },
-    { year: '2017', avg: 110.4, min: 42.1, max: 375.2 },
-    { year: '2019', avg: 105.1, min: 39.8, max: 352.0 },
-    { year: '2020', avg: 82.4, min: 28.5, max: 274.5 },
-    { year: '2021', avg: 94.6, min: 34.2, max: 310.8 },
-    { year: '2022', avg: 91.2, min: 32.0, max: 298.4 },
-    { year: '2023', avg: 88.5, min: 31.4, max: 286.2 },
-    { year: '2024', avg: 86.1, min: 29.8, max: 278.0 },
-    { year: '2025', avg: 84.7, min: 28.9, max: 271.4 },
-    { year: '2026', avg: 83.2, min: 27.5, max: 265.0 },
-  ];
+  const yearlyPm25 = useMemo<LineSeries[]>(() => [{
+    name: 'Annual mean',
+    color: '#ff682c',
+    points: (charts?.pm25_yearly || []).flatMap((row) => {
+      const year = numericValue(row, 'year');
+      const mean = numericValue(row, 'pm25_mean');
+      return year !== null && mean !== null
+        ? [{ x: year, y: mean, label: String(year) }]
+        : [];
+    }),
+  }], [charts]);
 
-  const cityComparisonData = [
-    { city: 'Delhi', avg_pm25: 148.6, avg_pm10: 236.4, avg_no2: 68.2, aqi_median: 285, status: 'Poor' },
-    { city: 'Patna', avg_pm25: 136.2, avg_pm10: 218.0, avg_no2: 52.4, aqi_median: 264, status: 'Poor' },
-    { city: 'Lucknow', avg_pm25: 126.8, avg_pm10: 198.5, avg_no2: 54.1, aqi_median: 242, status: 'Poor' },
-    { city: 'Kolkata', avg_pm25: 88.2, avg_pm10: 142.1, avg_no2: 44.8, aqi_median: 168, status: 'Moderate' },
-    { city: 'Mumbai', avg_pm25: 78.4, avg_pm10: 122.6, avg_no2: 42.5, aqi_median: 148, status: 'Moderate' },
-    { city: 'Pune', avg_pm25: 64.9, avg_pm10: 104.2, avg_no2: 38.1, aqi_median: 128, status: 'Moderate' },
-    { city: 'Hyderabad', avg_pm25: 56.4, avg_pm10: 92.8, avg_no2: 34.0, aqi_median: 112, status: 'Moderate' },
-    { city: 'Bengaluru', avg_pm25: 46.5, avg_pm10: 78.2, avg_no2: 28.4, aqi_median: 92, status: 'Satisfactory' },
-    { city: 'Chennai', avg_pm25: 44.8, avg_pm10: 74.5, avg_no2: 24.2, aqi_median: 88, status: 'Satisfactory' },
-  ];
+  const pcaVariance = useMemo<LineSeries[]>(() => [{
+    name: 'Cumulative explained variance',
+    color: '#0284c7',
+    points: (charts?.pca_variance || []).flatMap((row, index) => {
+      const variance = numericValue(row, 'cumulative_variance');
+      return variance !== null
+        ? [{ x: index + 1, y: variance, label: String(row.component || `PC${index + 1}`) }]
+        : [];
+    }),
+  }], [charts]);
 
-  const diurnalHours = [
-    { hour: '00:00', val: 112, desc: 'Boundary layer collapse / Inversion' },
-    { hour: '02:00', val: 124, desc: 'Nighttime thermal trapping' },
-    { hour: '04:00', val: 132, desc: 'Peak early morning stagnation' },
-    { hour: '06:00', val: 128, desc: 'Dawn transition' },
-    { hour: '08:00', val: 148, desc: 'Morning traffic rush-hour emission' },
-    { hour: '10:00', val: 122, desc: 'Solar heating begins convection' },
-    { hour: '12:00', val: 86, desc: 'Boundary layer expansion / Dispersion' },
-    { hour: '14:00', val: 68, desc: 'Diurnal minimum concentration' },
-    { hour: '16:00', val: 74, desc: 'Afternoon vertical mixing' },
-    { hour: '18:00', val: 105, desc: 'Evening rush hour traffic begins' },
-    { hour: '20:00', val: 138, desc: 'Fleet movement + Surface cooling' },
-    { hour: '22:00', val: 126, desc: 'Commercial heavy transport window' },
-  ];
+  const forecast = useMemo<LineSeries[]>(() => [{
+    name: 'Predicted AQI',
+    color: '#d97706',
+    points: (charts?.aqi_forecast || []).flatMap((row) => {
+      const horizon = numericValue(row, 'horizon_hours');
+      const predicted = numericValue(row, 'predicted_aqi');
+      return horizon !== null && predicted !== null
+        ? [{ x: horizon, y: predicted, label: `${horizon}h` }]
+        : [];
+    }),
+  }], [charts]);
 
-  const seasonalMetrics = [
-    { season: 'Winter (Nov-Feb)', avg_aqi: 278, pm25: 164.2, char: 'Severe thermal inversion, biomass burning, and low surface wind speeds.' },
-    { season: 'Summer (Mar-Jun)', avg_aqi: 142, pm25: 72.8, char: 'Strong thermal convection, high dispersion, elevated coarse dust PM10.' },
-    { season: 'Monsoon (Jul-Sep)', avg_aqi: 68, pm25: 34.5, char: 'Precipitation scavenging and wet deposition cleans ambient air column.' },
-    { season: 'Post-Monsoon (Oct)', avg_aqi: 198, pm25: 118.0, char: 'Wind stagnation, agricultural residue clearing, and falling nocturnal temperatures.' },
-  ];
+  const cityTrendSeries = useMemo<LineSeries[]>(() => {
+    const cityGroups = new Map<string, Array<{ year: number; pm25: number }>>();
+    (charts?.warehouse_pm25_by_city || []).forEach((row) => {
+      const city = String(row.city_name || '');
+      const year = numericValue(row, 'year');
+      const pm25 = numericValue(row, 'average_pm25');
+      if (!city || year === null || pm25 === null) return;
+      const values = cityGroups.get(city) || [];
+      values.push({ year, pm25 });
+      cityGroups.set(city, values);
+    });
+
+    return [...cityGroups.entries()]
+      .map(([city, values]) => ({
+        city,
+        mean: values.reduce((total, value) => total + value.pm25, 0) / values.length,
+        values,
+      }))
+      .sort((a, b) => b.mean - a.mean)
+      .slice(0, 8)
+      .map((entry, index) => ({
+        name: entry.city,
+        color: SERIES_COLORS[index],
+        points: entry.values
+          .sort((a, b) => a.year - b.year)
+          .map((value) => ({
+            x: value.year,
+            y: value.pm25,
+            label: String(value.year),
+          })),
+      }));
+  }, [charts]);
+
+  const cityYearRows = charts?.warehouse_city_year ?? EMPTY_CHART_RECORDS;
+  const availableCities = useMemo(
+    () => [...new Set([
+      ...cityYearRows.map((row) => String(row.city_name || '')).filter(Boolean),
+      ...(charts?.aqi_month_heatmap || []).map((row) => String(row.city_name || '')).filter(Boolean),
+    ])].sort((a, b) => a.localeCompare(b)),
+    [charts, cityYearRows]
+  );
+  const selectedAnalysisCity = availableCities.includes(analysisCity)
+    ? analysisCity
+    : availableCities[0] || analysisCity;
+  const metricLabel = pollutionMetric === 'average_aqi' ? 'Average AQI' : 'Average PM2.5 (µg/m³)';
+
+  const selectedCityAnnualValues = useMemo(
+    () => cityYearRows
+      .filter((row) => String(row.city_name || '').toLowerCase() === selectedAnalysisCity.toLowerCase())
+      .flatMap((row) => {
+        const year = numericValue(row, 'year');
+        const value = numericValue(row, pollutionMetric);
+        return year !== null && value !== null ? [{ year, value }] : [];
+      })
+      .sort((a, b) => a.year - b.year),
+    [cityYearRows, pollutionMetric, selectedAnalysisCity]
+  );
+  const selectedCityAnnualSeries = useMemo<LineSeries[]>(() => [{
+    name: `${selectedAnalysisCity} · annual average`,
+    color: '#ff682c',
+    points: selectedCityAnnualValues.map(({ year, value }) => ({
+      x: year,
+      y: value,
+      label: year === new Date().getFullYear() ? `${year}*` : String(year),
+    })),
+  }], [selectedAnalysisCity, selectedCityAnnualValues]);
+  const selectedCityYearChange = selectedCityAnnualValues.length > 1
+    ? {
+        latest: selectedCityAnnualValues[selectedCityAnnualValues.length - 1],
+        previous: selectedCityAnnualValues[selectedCityAnnualValues.length - 2],
+      }
+    : null;
+  const selectedCityChangePercent = selectedCityYearChange
+    ? ((selectedCityYearChange.latest.value - selectedCityYearChange.previous.value) /
+      Math.max(Math.abs(selectedCityYearChange.previous.value), 0.001)) * 100
+    : null;
+
+  const selectedCityMonthlyValues = useMemo(() => {
+    const row = (charts?.aqi_month_heatmap || []).find(
+      (item) => String(item.city_name || '').toLowerCase() === selectedAnalysisCity.toLowerCase()
+    );
+    return Array.from({ length: 12 }, (_, index) => {
+      const month = index + 1;
+      const value = row ? numericValue(row, String(month)) : null;
+      return value === null ? null : { month, value };
+    }).filter((item): item is { month: number; value: number } => item !== null);
+  }, [charts, selectedAnalysisCity]);
+  const selectedCityMonthlySeries = useMemo<LineSeries[]>(() => [{
+    name: `${selectedAnalysisCity} · monthly AQI average`,
+    color: '#0284c7',
+    points: selectedCityMonthlyValues.map(({ month, value }) => ({
+      x: month,
+      y: value,
+      label: new Date(2024, month - 1, 1).toLocaleString('en', { month: 'short' }),
+    })),
+  }], [selectedAnalysisCity, selectedCityMonthlyValues]);
+  const mostPollutedMonth = selectedCityMonthlyValues.reduce<{ month: number; value: number } | null>(
+    (highest, value) => !highest || value.value > highest.value ? value : highest,
+    null
+  );
+  const leastPollutedMonth = selectedCityMonthlyValues.reduce<{ month: number; value: number } | null>(
+    (lowest, value) => !lowest || value.value < lowest.value ? value : lowest,
+    null
+  );
+
+  const leaderboardYears = useMemo(() => {
+    const counts = new Map<number, number>();
+    cityYearRows.forEach((row) => {
+      const year = numericValue(row, 'year');
+      const value = numericValue(row, pollutionMetric);
+      if (year !== null && value !== null) counts.set(year, (counts.get(year) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .map(([year, count]) => ({ year, count }))
+      .sort((a, b) => b.year - a.year);
+  }, [cityYearRows, pollutionMetric]);
+  const maxLeaderboardCoverage = Math.max(0, ...leaderboardYears.map(({ count }) => count));
+  const bestCoveredYear = leaderboardYears.find(({ count }) => count >= maxLeaderboardCoverage * 0.75)?.year
+    ?? leaderboardYears[0]?.year
+    ?? null;
+  const selectedLeaderboardYear = leaderboardYear !== null &&
+    leaderboardYears.some(({ year }) => year === leaderboardYear)
+    ? leaderboardYear
+    : bestCoveredYear;
+  const selectedLeaderboardCoverage = leaderboardYears.find(({ year }) => year === selectedLeaderboardYear)?.count ?? 0;
+  const leaderboardRows = useMemo(
+    () => cityYearRows
+      .filter((row) => numericValue(row, 'year') === selectedLeaderboardYear && numericValue(row, pollutionMetric) !== null)
+      .sort((a, b) => (numericValue(b, pollutionMetric) ?? 0) - (numericValue(a, pollutionMetric) ?? 0)),
+    [cityYearRows, pollutionMetric, selectedLeaderboardYear]
+  );
+
+  const formatMonth = (month: number) =>
+    new Date(2024, month - 1, 1).toLocaleString('en', { month: 'long' });
+
+  const loadAgain = () => {
+    setCharts(null);
+    setLoading(true);
+    setError(null);
+    fetch(`${API_BASE}/api/analytics/visualizations`, { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`AirSense API ${response.status}: ${await response.text()}`);
+        }
+        return response.json() as Promise<AnalyticsChartsData>;
+      })
+      .then(setCharts)
+      .catch((requestError: unknown) => {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : `Unable to reach the AirSense API at ${API_BASE}.`
+        );
+      })
+      .finally(() => setLoading(false));
+  };
 
   return (
-    <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-10 bg-[#ffffff]">
-      {/* Header */}
+    <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8 bg-[#ffffff]">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[#efefef] pb-4">
         <div>
           <div className="text-[11px] font-mono uppercase text-[#816729] font-medium tracking-wider">
             Spatiotemporal Analytics
           </div>
-          <h1
-            className="text-3xl sm:text-4xl font-normal text-[#202020] tracking-[-0.02em] mt-1"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
-            Historical Air Analytics (2009–2026)
+          <h1 className="text-3xl sm:text-4xl font-normal text-[#202020] tracking-[-0.02em] mt-1">
+            Air Quality Visualizations
           </h1>
+          <p className="text-xs text-[#828282] mt-2">
+            Recreated from the Matplotlib figures in AirSense_DWM_ML_COMPLETE using the saved backend artifacts.
+          </p>
         </div>
         <div className="flex items-center gap-3">
-          <DemoBadge label="HISTORICAL WAREHOUSE DATA" />
-          <Link
-            href="/olap"
-            className="btn-ghost-sharp text-xs py-1.5 px-3"
+          <button
+            type="button"
+            onClick={loadAgain}
+            disabled={loading}
+            className="btn-ghost-sharp text-xs py-1.5 px-3 flex items-center gap-2"
           >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh charts
+          </button>
+          <Link href="/olap" className="btn-ghost-sharp text-xs py-1.5 px-3">
             OLAP Explorer →
           </Link>
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="card-data-dashboard p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-mono">
-        <div>
-          <label className="text-[#828282] uppercase block mb-1 text-[11px] font-semibold">City Scope</label>
-          <select
-            value={selectedCity}
-            onChange={(e) => setSelectedCity(e.target.value)}
-            className="w-full bg-[#f5f5f5] border border-[#e8e8e8] p-2 text-[#202020] focus:outline-none"
-            style={{ borderRadius: '0px' }}
-          >
-            {cities.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+      {error && (
+        <div className="p-4 border border-red-200 bg-red-50 text-red-700 text-xs flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>{error}</span>
         </div>
+      )}
 
-        <div>
-          <label className="text-[#828282] uppercase block mb-1 text-[11px] font-semibold">Target Pollutant</label>
-          <select
-            value={selectedPollutant}
-            onChange={(e) => setSelectedPollutant(e.target.value)}
-            className="w-full bg-[#f5f5f5] border border-[#e8e8e8] p-2 text-[#202020] focus:outline-none"
-            style={{ borderRadius: '0px' }}
-          >
-            {ALL_15_POLLUTANTS.slice(0, 8).map((p) => (
-              <option key={p.id} value={p.symbol}>{p.symbol} ({p.name})</option>
-            ))}
-          </select>
+      {loading && !charts && (
+        <div className="card-data-dashboard min-h-48 flex items-center justify-center gap-3 text-xs text-[#828282]">
+          <RefreshCw className="w-4 h-4 text-[#ff682c] animate-spin" />
+          Querying bounded chart datasets...
         </div>
+      )}
 
-        <div>
-          <label className="text-[#828282] uppercase block mb-1 text-[11px] font-semibold">Seasonal Window</label>
-          <select
-            value={selectedSeason}
-            onChange={(e) => setSelectedSeason(e.target.value)}
-            className="w-full bg-[#f5f5f5] border border-[#e8e8e8] p-2 text-[#202020] focus:outline-none"
-            style={{ borderRadius: '0px' }}
-          >
-            {seasons.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="text-[#828282] uppercase block mb-1 text-[11px] font-semibold">Temporal Epoch</label>
-          <select
-            value={selectedYearRange}
-            onChange={(e) => setSelectedYearRange(e.target.value)}
-            className="w-full bg-[#f5f5f5] border border-[#e8e8e8] p-2 text-[#202020] focus:outline-none"
-            style={{ borderRadius: '0px' }}
-          >
-            <option value="2015-2026">2015–2026 (Recent 11 Years)</option>
-            <option value="2009-2026">2009–2026 (Full 17-Year Archive)</option>
-            <option value="2020-2026">2020–2026 (Post-Lockdown Baseline)</option>
-          </select>
-        </div>
-      </div>
-
-      {/* MULTI-YEAR TREND */}
-      <div className="card-data-dashboard p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-[#efefef] pb-3">
-          <div>
-            <span className="text-[11px] font-mono uppercase text-[#816729]">Longitudinal Observation</span>
-            <h2 className="text-xl text-[#202020]" style={{ fontFamily: 'var(--font-heading)' }}>
-              National {selectedPollutant} Multi-Year Trajectory (2009–2026)
-            </h2>
-          </div>
-          <span className="font-mono text-xs text-[#828282]">
-            Annual Station-Weighted Means
-          </span>
-        </div>
-
-        {/* Minimal Editorial Column Chart */}
-        <div className="h-64 w-full bg-[#f5f5f5] rounded-xl p-4 flex flex-col justify-between border border-[#e8e8e8]">
-          <div className="flex justify-between text-[11px] font-mono text-[#828282] border-b border-[#e8e8e8] pb-1">
-            <span>Peak Winter Envelope (Max: 388 µg/m³)</span>
-            <span>Annual National Station Average</span>
-            <span>Summer/Monsoon Baseline (Min: 27.5 µg/m³)</span>
-          </div>
-
-          <div className="grid grid-cols-13 gap-2 h-44 items-end pt-4">
-            {yearlyTrends.map((yt) => {
-              const heightPct = Math.round((yt.avg / 150) * 100);
-              return (
-                <div key={yt.year} className="flex flex-col items-center gap-1 group relative h-full justify-end">
-                  <div className="w-full bg-[#e8e8e8] rounded-t h-full flex flex-col justify-end">
-                    <div
-                      className="w-full bg-[#202020] hover:bg-[#ff682c] rounded-t transition-colors"
-                      style={{ height: `${heightPct}%` }}
-                    />
-                  </div>
-                  <span className="font-mono text-[10px] text-[#828282] group-hover:text-[#202020]">
-                    &apos;{yt.year.slice(2)}
-                  </span>
+      {charts && (
+        <div className="space-y-6">
+          <section className="card-data-dashboard p-5 sm:p-6 space-y-4">
+            <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 border-b border-[#efefef] pb-3">
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-[#816729]">
+                  City leaderboard
                 </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="text-xs text-[#4d4d4d] flex flex-col sm:flex-row justify-between gap-2 pt-2 border-t border-[#efefef]">
-          <span>
-            Drop observed during 2020 industrial restrictions (82.4 µg/m³), with gradual stabilization post-2022.
-          </span>
-          <span className="font-mono text-[#828282] text-[11px]">
-            196.5M Total Historical Observations
-          </span>
-        </div>
-      </div>
-
-      {/* CITY COMPARISON & SEASONAL DYNAMICS */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
-        {/* City Comparison Table */}
-        <div className="lg:col-span-7 card-data-dashboard p-6 space-y-4">
-          <div className="flex justify-between items-center border-b border-[#efefef] pb-3">
-            <div>
-              <span className="text-[11px] font-mono uppercase text-[#816729]">Spatial Contrast</span>
-              <h2 className="text-lg text-[#202020]" style={{ fontFamily: 'var(--font-heading)' }}>
-                Metropolitan Air Quality Distribution
-              </h2>
-            </div>
-            <span className="font-mono text-xs text-[#828282]">2009–2026 Aggregates</span>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full editorial-table">
-              <thead>
-                <tr>
-                  <th>City</th>
-                  <th>PM2.5 (µg/m³)</th>
-                  <th>PM10 (µg/m³)</th>
-                  <th>NO2 (µg/m³)</th>
-                  <th>Median AQI</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cityComparisonData.map((row) => (
-                  <tr key={row.city}>
-                    <td className="font-mono font-semibold text-[#202020]">{row.city}</td>
-                    <td className="font-mono text-[#202020]">{row.avg_pm25}</td>
-                    <td className="font-mono text-[#4d4d4d]">{row.avg_pm10}</td>
-                    <td className="font-mono text-[#4d4d4d]">{row.avg_no2}</td>
-                    <td className="font-mono text-[#202020] font-semibold">{row.aqi_median}</td>
-                    <td>
-                      <AqiBadge category={row.status as AqiCategory} showNumber={false} size="sm" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Seasonal & Diurnal Analysis */}
-        <div className="lg:col-span-5 space-y-6">
-          <div className="card-asymmetric p-6 border border-[#e8e8e8] space-y-3">
-            <span className="text-[11px] font-mono uppercase text-[#816729]">Climatic Dynamics</span>
-            <h3 className="text-base text-[#202020]" style={{ fontFamily: 'var(--font-heading)' }}>
-              Seasonal Air Quality Variation
-            </h3>
-
-            <div className="space-y-2.5 font-mono text-xs">
-              {seasonalMetrics.map((sm) => (
-                <div key={sm.season} className="p-3 bg-[#ffffff] border border-[#e8e8e8] rounded space-y-1">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[#202020] font-semibold">{sm.season}</span>
-                    <span className="text-[#202020]">AQI ~{sm.avg_aqi}</span>
-                  </div>
-                  <div className="text-[11px] text-[#816729]">Avg PM2.5: {sm.pm25} µg/m³</div>
-                  <p className="font-sans text-[11px] text-[#4d4d4d] leading-normal pt-1">
-                    {sm.char}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      {/* 24-HOUR POLLUTION CLOCK */}
-      <div className="card-data-dashboard p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-[#efefef] pb-3">
-          <div>
-            <span className="text-[11px] font-mono uppercase text-[#816729]">Boundary Layer Dynamics</span>
-            <h2 className="text-xl text-[#202020]" style={{ fontFamily: 'var(--font-heading)' }}>
-              24-Hour Diurnal Pollution Clock
-            </h2>
-          </div>
-          <span className="font-mono text-xs text-[#828282]">
-            Hour 00 to 23 IST
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2 font-mono text-xs">
-          {diurnalHours.map((dh) => {
-            const isHigh = dh.val > 110;
-            return (
-              <div
-                key={dh.hour}
-                className="p-3 rounded border border-[#e8e8e8] bg-[#f5f5f5] flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex justify-between items-center text-[#828282] text-[11px]">
-                    <span className="text-[#202020] font-semibold">{dh.hour}</span>
-                    <span className={isHigh ? 'text-[#ff682c] font-semibold' : 'text-[#816729]'}>
-                      {dh.val} µg/m³
-                    </span>
-                  </div>
-                  <div className="w-full bg-[#e8e8e8] h-1.5 rounded-full overflow-hidden mt-2">
-                    <div
-                      className={`h-full ${isHigh ? 'bg-[#ff682c]' : 'bg-[#202020]'}`}
-                      style={{ width: `${(dh.val / 160) * 100}%` }}
-                    />
-                  </div>
-                </div>
-                <div className="text-[10px] text-[#4d4d4d] font-sans mt-3 leading-tight">
-                  {dh.desc}
-                </div>
+                <h2 className="text-lg text-[#202020] mt-1">Most polluted cities by annual average</h2>
+                <p className="text-xs text-[#828282] mt-1">
+                  Ranked from saved warehouse measurements; the default year prioritizes broad city coverage.
+                </p>
               </div>
-            );
-          })}
+              <div className="flex flex-wrap gap-2">
+                <label className="text-[10px] font-mono text-[#828282] flex items-center gap-2">
+                  Measure
+                  <select
+                    value={pollutionMetric}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === 'average_aqi' || value === 'average_pm25') setPollutionMetric(value);
+                      setLeaderboardYear(null);
+                    }}
+                    className="border border-[#e8e8e8] bg-white px-2 py-1.5 text-xs text-[#202020]"
+                  >
+                    <option value="average_aqi">Annual average AQI</option>
+                    <option value="average_pm25">Annual average PM2.5</option>
+                  </select>
+                </label>
+                <label className="text-[10px] font-mono text-[#828282] flex items-center gap-2">
+                  Year
+                  <select
+                    value={selectedLeaderboardYear ?? ''}
+                    onChange={(event) => setLeaderboardYear(Number(event.target.value))}
+                    className="border border-[#e8e8e8] bg-white px-2 py-1.5 text-xs text-[#202020]"
+                  >
+                    {leaderboardYears.map(({ year, count }) => (
+                      <option key={year} value={year}>{year} · {count} cities</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </header>
+
+            {leaderboardRows.length ? (
+              <>
+                <div className="text-[10px] font-mono text-[#828282]">
+                  Showing {leaderboardRows.length} cities with values for {selectedLeaderboardYear}; coverage: {selectedLeaderboardCoverage} cities.
+                  {selectedLeaderboardYear === new Date().getFullYear() ? ' This calendar year may be incomplete.' : ''}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[520px] text-xs">
+                    <thead>
+                      <tr className="text-left text-[10px] font-mono uppercase text-[#828282] border-b border-[#efefef]">
+                        <th className="py-2 pr-3">Rank</th>
+                        <th className="py-2 pr-3">City</th>
+                        <th className="py-2 pr-3 text-right">{metricLabel}</th>
+                        {pollutionMetric === 'average_aqi' && <th className="py-2 text-right">AQI category</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {leaderboardRows.slice(0, 10).map((row, index) => {
+                        const city = String(row.city_name || 'Unknown');
+                        const value = numericValue(row, pollutionMetric);
+                        return (
+                          <tr key={`${selectedLeaderboardYear}-${city}`} className="border-b border-[#f1f1f1] last:border-0">
+                            <td className="py-2.5 pr-3 font-mono text-[#828282]">{String(index + 1).padStart(2, '0')}</td>
+                            <td className="py-2.5 pr-3">
+                              <button type="button" onClick={() => setAnalysisCity(city)} className="text-[#202020] hover:text-[#ff682c] hover:underline">
+                                {city}
+                              </button>
+                            </td>
+                            <td className="py-2.5 pr-3 text-right font-mono text-[#202020]">{value?.toFixed(1) ?? '—'}</td>
+                            {pollutionMetric === 'average_aqi' && (
+                              <td className="py-2.5 text-right text-[#4d4d4d]">{value === null ? '—' : getAqiCategory(value)}</td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="text-xs text-[#828282] py-8 text-center">No annual city values are available for this measure.</div>
+            )}
+          </section>
+
+          <section className="card-data-dashboard p-5 sm:p-6 space-y-5">
+            <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3 border-b border-[#efefef] pb-3">
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.16em] text-[#816729]">
+                  City-wise analysis
+                </div>
+                <h2 className="text-lg text-[#202020] mt-1">Annual and seasonal pollution trends</h2>
+                <p className="text-xs text-[#828282] mt-1">
+                  Select a city and measure to inspect yearly averages and its historical month-of-year AQI profile.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <label className="text-[10px] font-mono text-[#828282] flex items-center gap-2">
+                  City
+                  <select
+                    value={selectedAnalysisCity}
+                    onChange={(event) => setAnalysisCity(event.target.value)}
+                    className="max-w-[220px] border border-[#e8e8e8] bg-white px-2 py-1.5 text-xs text-[#202020]"
+                  >
+                    {availableCities.map((city) => <option key={city} value={city}>{city}</option>)}
+                  </select>
+                </label>
+                <label className="text-[10px] font-mono text-[#828282] flex items-center gap-2">
+                  Measure
+                  <select
+                    value={pollutionMetric}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === 'average_aqi' || value === 'average_pm25') setPollutionMetric(value);
+                      setLeaderboardYear(null);
+                    }}
+                    className="border border-[#e8e8e8] bg-white px-2 py-1.5 text-xs text-[#202020]"
+                  >
+                    <option value="average_aqi">Average AQI</option>
+                    <option value="average_pm25">Average PM2.5</option>
+                  </select>
+                </label>
+              </div>
+            </header>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="p-3 bg-[#f5f5f5] border border-[#efefef]">
+                <div className="text-[10px] font-mono uppercase text-[#828282]">Latest annual mean</div>
+                <div className="text-lg font-mono text-[#202020] mt-1">
+                  {selectedCityAnnualValues.length
+                    ? `${selectedCityAnnualValues[selectedCityAnnualValues.length - 1].value.toFixed(1)} ${pollutionMetric === 'average_aqi' ? 'AQI' : 'µg/m³'}`
+                    : 'Unavailable'}
+                </div>
+                {selectedCityAnnualValues.length > 0 && (
+                  <div className="text-[10px] text-[#828282] mt-1">
+                    {selectedCityAnnualValues[selectedCityAnnualValues.length - 1].year}
+                    {selectedCityAnnualValues[selectedCityAnnualValues.length - 1].year === new Date().getFullYear() ? ' · partial year' : ''}
+                  </div>
+                )}
+              </div>
+              <div className="p-3 bg-[#f5f5f5] border border-[#efefef]">
+                <div className="text-[10px] font-mono uppercase text-[#828282]">Change vs previous available year</div>
+                {selectedCityYearChange ? (
+                  <>
+                    <div className={`text-lg font-mono mt-1 ${selectedCityChangePercent !== null && selectedCityChangePercent > 0 ? 'text-red-700' : selectedCityChangePercent !== null && selectedCityChangePercent < 0 ? 'text-emerald-700' : 'text-[#202020]'}`}>
+                      {selectedCityChangePercent === null || selectedCityChangePercent === 0
+                        ? 'No change'
+                        : `${selectedCityChangePercent > 0 ? 'Increase' : 'Decrease'} ${Math.abs(selectedCityChangePercent).toFixed(1)}%`}
+                    </div>
+                    <div className="text-[10px] text-[#828282] mt-1">
+                      {selectedCityYearChange.previous.year} → {selectedCityYearChange.latest.year}
+                    </div>
+                  </>
+                ) : <div className="text-xs text-[#828282] mt-2">At least two annual values are needed.</div>}
+              </div>
+              <div className="p-3 bg-[#f5f5f5] border border-[#efefef]">
+                <div className="text-[10px] font-mono uppercase text-[#828282]">Month-of-year AQI extremes</div>
+                {mostPollutedMonth && leastPollutedMonth ? (
+                  <div className="text-xs text-[#202020] mt-2 space-y-1">
+                    <div>Highest: <strong>{formatMonth(mostPollutedMonth.month)}</strong> · AQI {mostPollutedMonth.value.toFixed(1)}</div>
+                    <div>Lowest: <strong>{formatMonth(leastPollutedMonth.month)}</strong> · AQI {leastPollutedMonth.value.toFixed(1)}</div>
+                  </div>
+                ) : <div className="text-xs text-[#828282] mt-2">Monthly profile unavailable.</div>}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+              <ChartCardWithPlot
+                title={`Annual ${metricLabel} · ${selectedAnalysisCity}`}
+                description="Year-by-year average from the saved city warehouse aggregates. A star marks the current, potentially incomplete year."
+                source="warehouse_year_city.csv · grouped by year and city"
+              >
+                <LineChart
+                  series={selectedCityAnnualSeries}
+                  xLabel="Year"
+                  yLabel={metricLabel}
+                />
+              </ChartCardWithPlot>
+              <ChartCardWithPlot
+                title={`Most and least polluted months · ${selectedAnalysisCity}`}
+                description="Historical average AQI for each calendar month; this is a month-of-year profile, not a current-year forecast."
+                source="warehouse_aqi_month_heatmap.csv · city monthly AQI means"
+              >
+                <LineChart
+                  series={selectedCityMonthlySeries}
+                  xLabel="Month"
+                  yLabel="Average AQI"
+                />
+              </ChartCardWithPlot>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+          <ChartCardWithPlot
+            title="Historical Daily Mean PM2.5"
+            description="Annual average of daily mean PM2.5 measurements."
+            source="clean_air_daily.parquet · grouped by year and PM2.5"
+          >
+            <LineChart series={yearlyPm25} xLabel="Year" yLabel="Mean PM2.5 (µg/m³)" />
+          </ChartCardWithPlot>
+
+          <ChartCardWithPlot
+            title="PCA Cumulative Explained Variance"
+            description="Cumulative share of variance explained as principal components are added."
+            source="pca_variance.csv"
+          >
+            <LineChart
+              series={pcaVariance}
+              xLabel="Principal component"
+              yLabel="Cumulative explained variance"
+              yMaximum={1}
+              threshold={0.9}
+              thresholdLabel="90% variance"
+            />
+          </ChartCardWithPlot>
+
+          <ChartCardWithPlot
+            title="Next 24-Hour AQI Forecast"
+            description="Saved model predictions at each forecast horizon."
+            source="aqi_forecast_next_24h.parquet"
+          >
+            <LineChart series={forecast} xLabel="Hours ahead" yLabel="Predicted AQI" />
+          </ChartCardWithPlot>
+
+          <ChartCardWithPlot
+            title="Warehouse-Derived Historical PM2.5"
+            description="Annual PM2.5 trends for the eight cities with the highest available warehouse mean."
+            source="warehouse_year_city.csv · top 8 city averages"
+          >
+            <LineChart
+              series={cityTrendSeries}
+              xLabel="Year"
+              yLabel="Average PM2.5 (µg/m³)"
+            />
+          </ChartCardWithPlot>
+
+          <ChartCardWithPlot
+            title="PCA 2D Projection"
+            description="Sampled observations projected onto the first two principal components."
+            source={`pca_2d_projection.parquet · ${charts.pca_sample_size.toLocaleString()}-row sample`}
+          >
+            <ScatterChart rows={charts.pca_2d} dimensions={['PC1', 'PC2']} title="PCA 2D Projection" />
+          </ChartCardWithPlot>
+
+          <ChartCardWithPlot
+            title="PCA 3D Projection"
+            description="The notebook's three component coordinates rendered as an isometric scatter plot."
+            source={`pca_3d_projection.parquet · ${charts.pca_sample_size.toLocaleString()}-row sample`}
+          >
+            <Scatter3DChart rows={charts.pca_3d} sampleSize={charts.pca_sample_size} />
+          </ChartCardWithPlot>
+
+          <div className="xl:col-span-2">
+            <ChartCardWithPlot
+              title="Warehouse AQI Month Heatmap"
+              description="Monthly average AQI by city; darker colors indicate higher AQI categories."
+              source="warehouse_aqi_month_heatmap.csv · top 30 cities by annual monthly mean"
+            >
+              <AqiHeatmap rows={charts.aqi_month_heatmap} />
+            </ChartCardWithPlot>
+          </div>
+          </div>
         </div>
-      </div>
+      )}
 
       <DisclaimerBanner />
     </div>

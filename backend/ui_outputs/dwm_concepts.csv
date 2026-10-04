@@ -1,0 +1,27 @@
+concept,implementation,purpose
+Data Source,XKDR historical Parquet,Large-scale source layer
+Data Profiling,"Coverage, schema, station and pollutant profiling",Data understanding
+Data Quality,"Missingness, duplicates, domain validation, temporal gaps and outliers",Quality control
+Preprocessing,Clean analytical dataset and quality flags,Data preparation
+ETL,"Extract, validate, clean, transform, dimension generation, fact generation, load and reconcile",Warehouse pipeline
+Fact_Air_Measurement,Station × pollutant × timestamp,Detailed fact
+Fact_Air_Daily,Station × day,BI/OLAP fact
+Dim_Time,Year → Quarter → Month → Day → Hour,Time hierarchy
+Dim_Station,State → City → Station,Geographical hierarchy
+Dim_Location,City/state/region/coordinates,Location context
+Dim_Pollutant,Pollutant → group → specific pollutant,Pollutant context
+Dim_Source,XKDR/source network,Source context
+Star Schema,Facts with conformed dimensions,Dimensional model
+Snowflake Schema,Station → City → State and pollutant grouping,Normalized dimensional model
+SCD Type 2,Station version history structure,Historical dimension management
+Fact Constellation,Detailed and daily facts sharing dimensions,Multiple-fact warehouse
+Data Marts,"Citizen, Pollution BI and ML Feature marts",Purpose-built analytics
+OLAP Roll-up,Higher-level aggregation,Multidimensional analysis
+OLAP Drill-down,Lower-level detail,Multidimensional analysis
+OLAP Slice,Single-dimensional restriction,Multidimensional analysis
+OLAP Dice,Multi-dimensional subcube,Multidimensional analysis
+OLAP Pivot,Change row/column orientation,Multidimensional analysis
+OLAP CUBE,All selected grouping combinations,Multidimensional aggregation
+GROUPING SETS,Specified grouping combinations,Multidimensional aggregation
+Materialized View,Precomputed aggregate,Performance optimization
+Warehouse Visualization,Charts and heatmaps from warehouse queries,BI presentation

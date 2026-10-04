@@ -2,17 +2,18 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import {
-  Database,
-  Layers,
-  Table,
-  ArrowDown,
-} from 'lucide-react';
+import { Database } from 'lucide-react';
 import { DemoBadge } from '@/components/ui/DemoBadge';
 import { DisclaimerBanner } from '@/components/ui/DisclaimerBanner';
+import {
+  SchemaDiagram,
+  type WarehouseFactType,
+  type WarehouseSchemaType,
+} from '@/components/warehouse/SchemaDiagram';
 
 export default function WarehousePage() {
-  const [schemaType, setSchemaType] = useState<'star' | 'snowflake'>('star');
+  const [schemaType, setSchemaType] = useState<WarehouseSchemaType>('star');
+  const [factType, setFactType] = useState<WarehouseFactType>('fact_air_daily');
   const [selectedTable, setSelectedTable] = useState<string>('fact_air_daily');
 
   const tableMetadata: Record<
@@ -30,13 +31,15 @@ export default function WarehousePage() {
       name: 'fact_air_daily',
       type: 'Fact Table',
       grain: 'One monitoring station × one calendar day',
-      recordCount: '2.84 Million Rows',
-      storageEngine: 'PostgreSQL 16 (Partitioned by Year)',
+      recordCount: '802,894 Rows',
+      storageEngine: 'PostgreSQL 16',
       columns: [
-        { name: 'daily_fact_id', type: 'BIGSERIAL', key: 'PK', description: 'Surrogate primary key' },
-        { name: 'time_id', type: 'INTEGER', key: 'FK', description: 'References dim_time' },
-        { name: 'station_id', type: 'VARCHAR(32)', key: 'FK', description: 'References dim_station' },
-        { name: 'location_id', type: 'INTEGER', key: 'FK', description: 'References dim_location' },
+        { name: 'fact_daily_id', type: 'BIGINT', key: 'PK', description: 'Daily fact row identifier' },
+        { name: 'time_id', type: 'BIGINT', key: 'FK', description: 'References dim_time' },
+        { name: 'station_id', type: 'BIGINT', key: 'FK', description: 'References dim_station' },
+        { name: 'location_id', type: 'BIGINT', key: 'FK', description: 'References dim_location' },
+        { name: 'source_id', type: 'BIGINT', key: 'FK', description: 'References dim_source' },
+        { name: 'pollution_date', type: 'DATE', key: '', description: 'Calendar day summarized by this row' },
         { name: 'avg_pm25', type: 'NUMERIC(6,2)', key: 'Measure', description: '24-hour mean fine particulate concentration' },
         { name: 'max_pm25', type: 'NUMERIC(6,2)', key: 'Measure', description: 'Daily peak 1-hour PM2.5 concentration' },
         { name: 'avg_pm10', type: 'NUMERIC(6,2)', key: 'Measure', description: '24-hour mean coarse particulate concentration' },
@@ -55,27 +58,28 @@ export default function WarehousePage() {
       name: 'fact_air_measurement',
       type: 'Fact Table',
       grain: 'One individual pollutant reading from one station at one hourly timestamp',
-      recordCount: '196.50 Million Rows (161.3M post-cleaning)',
+      recordCount: '196.50 Million Rows',
       storageEngine: 'PostgreSQL 16 Range Partitioned + DuckDB Direct Parquet Scan',
       columns: [
-        { name: 'measurement_id', type: 'BIGSERIAL', key: 'PK', description: 'Surrogate primary key' },
-        { name: 'time_id', type: 'INTEGER', key: 'FK', description: 'References dim_time (hourly granularity)' },
-        { name: 'station_id', type: 'VARCHAR(32)', key: 'FK', description: 'References dim_station' },
-        { name: 'location_id', type: 'INTEGER', key: 'FK', description: 'References dim_location' },
-        { name: 'pollutant_id', type: 'VARCHAR(16)', key: 'FK', description: 'References dim_pollutant' },
-        { name: 'source_id', type: 'INTEGER', key: 'FK', description: 'References dim_source' },
-        { name: 'measurement_value', type: 'NUMERIC(8,3)', key: 'Measure', description: 'Raw/calibrated sensor concentration value' },
-        { name: 'quality_flag', type: 'VARCHAR(16)', key: 'Flag', description: 'Data quality status (VALID, IMPUTED, OUTLIER)' },
+        { name: 'measurement_id', type: 'BIGINT', key: '', description: 'Measurement identifier; no primary-key constraint declared' },
+        { name: 'time_id', type: 'BIGINT', key: 'FK', description: 'References dim_time' },
+        { name: 'station_id', type: 'BIGINT', key: 'FK', description: 'References dim_station' },
+        { name: 'location_id', type: 'BIGINT', key: 'FK', description: 'References dim_location' },
+        { name: 'pollutant_id', type: 'BIGINT', key: 'FK', description: 'References dim_pollutant' },
+        { name: 'source_id', type: 'BIGINT', key: 'FK', description: 'References dim_source' },
+        { name: 'period_start', type: 'TIMESTAMP', key: '', description: 'Partition timestamp for the hourly reading' },
+        { name: 'measurement_value', type: 'DOUBLE PRECISION', key: 'Measure', description: 'Observed pollutant value' },
+        { name: 'quality_flag', type: 'INTEGER', key: 'Flag', description: 'Quality-control flag' },
       ],
     },
     dim_time: {
       name: 'dim_time',
       type: 'Dimension Table',
       grain: 'One unique hour between 2009-01-01 and 2026-03-31',
-      recordCount: '151,200 Rows',
+      recordCount: '14,713 Rows',
       storageEngine: 'PostgreSQL Conformed Dimension',
       columns: [
-        { name: 'time_id', type: 'INTEGER', key: 'PK', description: 'Surrogate key (YYYYMMDDHH)' },
+        { name: 'time_id', type: 'BIGINT', key: 'PK', description: 'Surrogate time key' },
         { name: 'timestamp', type: 'TIMESTAMPTZ', key: '', description: 'Exact ISO-8601 timestamp in IST (+05:30)' },
         { name: 'date', type: 'DATE', key: '', description: 'Calendar date' },
         { name: 'hour', type: 'SMALLINT', key: 'Level', description: 'Hour of day (0-23)' },
@@ -97,29 +101,79 @@ export default function WarehousePage() {
       recordCount: '558 Rows (CPCB + 5 US Embassy/Consulate)',
       storageEngine: 'PostgreSQL Conformed Dimension (SCD Type 2 Enabled)',
       columns: [
-        { name: 'station_key', type: 'INTEGER', key: 'PK', description: 'Surrogate SCD key' },
-        { name: 'station_id', type: 'VARCHAR(32)', key: 'Natural', description: 'Natural station code (e.g. DL_001)' },
+        { name: 'station_id', type: 'BIGINT', key: 'PK', description: 'Surrogate station key' },
+        { name: 'source_station_id', type: 'VARCHAR(128)', key: 'Natural', description: 'Natural source station code' },
         { name: 'station_name', type: 'VARCHAR(128)', key: '', description: 'Human-readable official station name' },
+        { name: 'city_id', type: 'BIGINT', key: 'FK', description: 'Snowflake view: references dim_city' },
+        { name: 'state_id', type: 'BIGINT', key: 'FK', description: 'Snowflake view: references dim_state' },
         { name: 'latitude', type: 'NUMERIC(8,5)', key: '', description: 'WGS84 decimal latitude' },
         { name: 'longitude', type: 'NUMERIC(8,5)', key: '', description: 'WGS84 decimal longitude' },
-        { name: 'city', type: 'VARCHAR(64)', key: 'Hierarchy', description: 'City name (normalized in Snowflake schema)' },
-        { name: 'state', type: 'VARCHAR(64)', key: 'Hierarchy', description: 'State / Union Territory' },
+        { name: 'city', type: 'VARCHAR(255)', key: 'Hierarchy', description: 'City attribute in the denormalized dimension' },
+        { name: 'state', type: 'VARCHAR(255)', key: 'Hierarchy', description: 'State / Union Territory attribute' },
         { name: 'station_type', type: 'VARCHAR(32)', key: '', description: 'CAAQM or US_EMBASSY' },
         { name: 'source', type: 'VARCHAR(64)', key: '', description: 'CPCB / State Pollution Control Board' },
         { name: 'status', type: 'VARCHAR(16)', key: '', description: 'Active or Inactive' },
-        { name: 'valid_from', type: 'DATE', key: 'SCD', description: 'SCD Type 2 version start date' },
-        { name: 'valid_to', type: 'DATE', key: 'SCD', description: 'SCD Type 2 version end date (NULL if current)' },
-        { name: 'is_current', type: 'BOOLEAN', key: 'SCD', description: 'True for active version' },
+      ],
+    },
+    dim_location: {
+      name: 'dim_location',
+      type: 'Dimension Table',
+      grain: 'One monitored location',
+      recordCount: 'Location members',
+      storageEngine: 'PostgreSQL dimension',
+      columns: [
+        { name: 'location_id', type: 'BIGINT', key: 'PK', description: 'Surrogate location key' },
+        { name: 'city_id', type: 'BIGINT', key: 'FK', description: 'References dim_city in the snowflake model' },
+        { name: 'city_name', type: 'VARCHAR(255)', key: '', description: 'City attribute in the star model' },
+        { name: 'state_name', type: 'VARCHAR(255)', key: '', description: 'State attribute in the star model' },
+        { name: 'latitude', type: 'DOUBLE PRECISION', key: '', description: 'Location latitude' },
+        { name: 'longitude', type: 'DOUBLE PRECISION', key: '', description: 'Location longitude' },
+      ],
+    },
+    dim_source: {
+      name: 'dim_source',
+      type: 'Dimension Table',
+      grain: 'One measurement source or monitoring network',
+      recordCount: 'Source members',
+      storageEngine: 'PostgreSQL dimension',
+      columns: [
+        { name: 'source_id', type: 'BIGINT', key: 'PK', description: 'Surrogate source key' },
+        { name: 'source_name', type: 'VARCHAR(255)', key: '', description: 'Source organization' },
+        { name: 'network', type: 'VARCHAR(255)', key: '', description: 'Monitoring network' },
+        { name: 'country', type: 'VARCHAR(128)', key: '', description: 'Source country' },
+      ],
+    },
+    dim_city: {
+      name: 'dim_city',
+      type: 'Dimension Table',
+      grain: 'One city',
+      recordCount: 'City members',
+      storageEngine: 'PostgreSQL normalized geography dimension',
+      columns: [
+        { name: 'city_id', type: 'BIGINT', key: 'PK', description: 'Surrogate city key' },
+        { name: 'state_id', type: 'BIGINT', key: 'FK', description: 'References dim_state' },
+        { name: 'city_name', type: 'VARCHAR(255)', key: '', description: 'City name' },
+      ],
+    },
+    dim_state: {
+      name: 'dim_state',
+      type: 'Dimension Table',
+      grain: 'One state or union territory',
+      recordCount: 'State members',
+      storageEngine: 'PostgreSQL normalized geography dimension',
+      columns: [
+        { name: 'state_id', type: 'BIGINT', key: 'PK', description: 'Surrogate state key' },
+        { name: 'state_name', type: 'VARCHAR(255)', key: 'Unique', description: 'State or union territory name' },
       ],
     },
     dim_pollutant: {
       name: 'dim_pollutant',
       type: 'Dimension Table',
       grain: 'One chemical or particulate species measured in ambient air',
-      recordCount: '15 Rows',
+      recordCount: '16 Rows',
       storageEngine: 'PostgreSQL Dimension',
       columns: [
-        { name: 'pollutant_id', type: 'VARCHAR(16)', key: 'PK', description: 'Primary pollutant identifier (POL_01)' },
+        { name: 'pollutant_id', type: 'BIGINT', key: 'PK', description: 'Surrogate pollutant key' },
         { name: 'pollutant_name', type: 'VARCHAR(64)', key: '', description: 'Full chemical name' },
         { name: 'symbol', type: 'VARCHAR(16)', key: '', description: 'Standard chemical symbol (PM2.5, NO2)' },
         { name: 'unit', type: 'VARCHAR(16)', key: '', description: 'µg/m³, mg/m³, or ppb' },
@@ -209,117 +263,59 @@ export default function WarehousePage() {
           </div>
         </div>
 
-        {/* Visual Architecture Diagram */}
-        <div className="p-6 bg-[#f5f5f5] rounded-xl border border-[#e8e8e8] font-mono text-xs space-y-6">
-          <div className="text-[11px] text-[#828282] uppercase flex justify-between">
-            <span>Model: {schemaType.toUpperCase()} SCHEMA</span>
-            <span>Click any table to inspect fields</span>
+        {/* Schema diagram */}
+        <div className="p-4 sm:p-6 bg-[#f5f5f5] rounded-xl border border-[#e8e8e8] font-mono text-xs space-y-5">
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+            <div className="text-[11px] text-[#828282] uppercase">
+              Model: {schemaType} schema · click a table to inspect its fields
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex rounded-full bg-[#e8e8e8] p-1">
+                {([
+                  ['fact_air_daily', 'Daily summary'],
+                  ['fact_air_measurement', 'Hourly measurement'],
+                ] as const).map(([fact, label]) => (
+                  <button
+                    key={fact}
+                    type="button"
+                    onClick={() => {
+                      setFactType(fact);
+                      setSelectedTable(fact);
+                    }}
+                    className={`rounded-full px-3 py-1.5 text-[10px] uppercase ${
+                      factType === fact ? 'bg-[#202020] text-white' : 'text-[#4d4d4d]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1 rounded-full bg-[#e8e8e8] p-1">
+                {(['star', 'snowflake'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setSchemaType(type)}
+                    className={`rounded-full px-3 py-1.5 text-[10px] uppercase ${
+                      schemaType === type ? 'bg-[#202020] text-white' : 'text-[#4d4d4d]'
+                    }`}
+                  >
+                    {type} schema
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          {schemaType === 'star' ? (
-            <div className="space-y-6">
-              <div className="flex justify-center">
-                <button
-                  onClick={() => setSelectedTable('dim_time')}
-                  className={`p-3 rounded border text-center transition-all ${
-                    selectedTable === 'dim_time'
-                      ? 'bg-[#202020] text-white border-[#202020]'
-                      : 'bg-[#ffffff] border-[#e8e8e8] text-[#202020]'
-                  }`}
-                >
-                  <div className="font-semibold">DIM_TIME</div>
-                  <div className="text-[10px] opacity-80">151.2K Rows • Year → Month → Hour</div>
-                </button>
-              </div>
+          <SchemaDiagram
+            schemaType={schemaType}
+            factType={factType}
+            selectedTable={selectedTable}
+            onSelectTable={setSelectedTable}
+          />
 
-              <div className="flex items-center justify-center gap-4 flex-wrap">
-                <button
-                  onClick={() => setSelectedTable('dim_station')}
-                  className={`p-3 rounded border text-center transition-all ${
-                    selectedTable === 'dim_station'
-                      ? 'bg-[#202020] text-white border-[#202020]'
-                      : 'bg-[#ffffff] border-[#e8e8e8] text-[#202020]'
-                  }`}
-                >
-                  <div className="font-semibold">DIM_STATION</div>
-                  <div className="text-[10px] opacity-80">558 Monitors • SCD Type 2</div>
-                </button>
-
-                <div className="text-[#828282]">───</div>
-
-                <button
-                  onClick={() => setSelectedTable('fact_air_daily')}
-                  className={`p-4 rounded border text-center transition-all ${
-                    selectedTable === 'fact_air_daily'
-                      ? 'bg-[#202020] text-white border-[#202020] ring-2 ring-[#ff682c]'
-                      : 'bg-[#ffffff] border-[#e8e8e8] text-[#202020]'
-                  }`}
-                >
-                  <div className="text-[10px] uppercase text-[#ff682c]">CENTRAL FACT</div>
-                  <div className="text-sm font-semibold">FACT_AIR_DAILY</div>
-                  <div className="text-[10px] opacity-80">2.84M Daily Records</div>
-                </button>
-
-                <div className="text-[#828282]">───</div>
-
-                <button
-                  onClick={() => setSelectedTable('dim_pollutant')}
-                  className={`p-3 rounded border text-center transition-all ${
-                    selectedTable === 'dim_pollutant'
-                      ? 'bg-[#202020] text-white border-[#202020]'
-                      : 'bg-[#ffffff] border-[#e8e8e8] text-[#202020]'
-                  }`}
-                >
-                  <div className="font-semibold">DIM_POLLUTANT</div>
-                  <div className="text-[10px] opacity-80">15 Species • Particulate/Gas</div>
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="flex justify-center">
-                <button
-                  onClick={() => setSelectedTable('dim_time')}
-                  className="p-3 rounded border bg-[#ffffff] border-[#e8e8e8] text-[#202020]"
-                >
-                  <div className="font-semibold">DIM_TIME (Normalized into Dim_Date → Dim_Month → Dim_Year)</div>
-                </button>
-              </div>
-
-              <div className="flex items-center justify-center gap-4 flex-wrap">
-                <div className="flex flex-col items-center gap-1.5 p-2 bg-[#ffffff] rounded border border-[#e8e8e8]">
-                  <span className="text-[10px] text-[#828282]">3NF NORMALIZED</span>
-                  <div className="text-[11px] font-semibold">Dim_Station</div>
-                  <ArrowDown className="w-3 h-3 text-[#828282]" />
-                  <div className="text-[11px]">Dim_City</div>
-                  <ArrowDown className="w-3 h-3 text-[#828282]" />
-                  <div className="text-[11px]">Dim_State</div>
-                </div>
-
-                <div className="text-[#828282]">───</div>
-
-                <button
-                  onClick={() => setSelectedTable('fact_air_daily')}
-                  className="p-4 rounded border bg-[#202020] text-white"
-                >
-                  <div className="text-[10px] text-[#ff682c]">CENTRAL FACT</div>
-                  <div className="text-sm font-semibold">FACT_AIR_DAILY</div>
-                </button>
-
-                <div className="text-[#828282]">───</div>
-
-                <div className="flex flex-col items-center gap-1.5 p-2 bg-[#ffffff] rounded border border-[#e8e8e8]">
-                  <span className="text-[10px] text-[#828282]">3NF NORMALIZED</span>
-                  <div className="text-[11px] font-semibold">Dim_Pollutant</div>
-                  <ArrowDown className="w-3 h-3 text-[#828282]" />
-                  <div className="text-[11px]">Dim_Pollutant_Group</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="p-3 bg-[#ffffff] border border-[#e8e8e8] rounded text-xs text-[#4d4d4d] font-sans">
-            <strong>Architecture Distinction:</strong> The Star Schema provides maximum query speed for denormalized OLAP slices by minimizing JOIN overhead. The Snowflake Schema normalizes station and pollutant hierarchies into 3NF.
+          <div className="p-3 bg-white border border-[#e8e8e8] rounded text-xs text-[#4d4d4d] font-sans">
+            <strong>Relationship key:</strong> arrows run from the referenced dimension key to the fact-table foreign key; each edge is one-to-many. The daily summary fact has no pollutant foreign key because pollutant values are separate measures. The hourly measurement fact is pollutant-specific. Snowflake view factors geography into state and city tables; time hierarchies remain attributes of one dimension, and pollutant groups are attributes rather than a separate table.
           </div>
         </div>
 

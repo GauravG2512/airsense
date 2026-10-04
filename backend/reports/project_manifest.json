@@ -1,0 +1,14 @@
+{
+  "project": "AirSense",
+  "source": "XKDR India Air Quality Database",
+  "persistent_root": "/content/drive/MyDrive/AirSense",
+  "history_files": 207,
+  "hourly_files": 13,
+  "clean_daily_rows": 8835377,
+  "aqi_rows": 64767,
+  "selected_regression_model": "XGBoost",
+  "selected_classification_model": "XGBoost",
+  "cluster_count": 2,
+  "warehouse_database": "/content/drive/MyDrive/AirSense/warehouse/airsense_dw.duckdb",
+  "postgresql_ddl": "/content/drive/MyDrive/AirSense/warehouse/postgresql_ddl.sql"
+}

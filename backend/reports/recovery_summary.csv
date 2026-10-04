@@ -1,0 +1,10 @@
+persistent_layer,path,available
+Google Drive,/content/drive/MyDrive/AirSense,True
+Historical Parquet,/content/drive/MyDrive/AirSense/airsense_api_data/history_daily,True
+DuckDB analytical DB,/content/drive/MyDrive/AirSense/data/airsense_analytics.duckdb,True
+Clean dataset,/content/drive/MyDrive/AirSense/data/clean_air_daily.parquet,True
+AQI dataset,/content/drive/MyDrive/AirSense/data/city_daily_aqi.parquet,True
+Feature dataset,/content/drive/MyDrive/AirSense/features/feature_dataset.parquet,True
+Saved regression model,/content/drive/MyDrive/AirSense/models/aqi_regression_models.joblib,True
+Saved classification model,/content/drive/MyDrive/AirSense/models/aqi_classification_models.joblib,True
+Warehouse prototype,/content/drive/MyDrive/AirSense/warehouse/airsense_dw.duckdb,True

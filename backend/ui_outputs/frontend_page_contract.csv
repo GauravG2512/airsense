@@ -1,0 +1,14 @@
+route,page,purpose
+/,Home,"Plain-language AQI explanation, pollutant glossary, project purpose and source"
+/dashboard,Personal Air Intelligence,"Location, time, activity, current analytics, baseline and forecast"
+/map,Pollution Map,"Station/city markers, pollution levels, clusters and anomalies"
+/analytics,Historical Analytics,"Trends, seasonal analysis, city comparison and distributions"
+/warehouse,Data Warehouse,"Facts, dimensions, grain, keys, star and snowflake structures"
+/olap,OLAP Explorer,"Roll-up, drill-down, slice, dice, pivot, cube and grouping sets"
+/datamining,Data Mining,"PCA, clustering, anomaly detection and association analysis"
+/features,Feature Lab,"Feature engineering, selection, RFE, feature importance and PCA"
+/models,ML Model Lab,"Regression, classification, forecasting and model comparison"
+/explain,Explain My AQI,"Feature importance, baseline deviation and model evidence"
+/pipeline,ETL and Data Quality,"Source inventory, cleaning, quality reports and warehouse validation"
+/concepts,DWM + ML Concepts,Definitions and live project artifacts
+/about,About,"Team, methodology, source attribution, limitations and privacy"

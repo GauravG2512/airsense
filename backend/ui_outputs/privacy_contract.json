@@ -1,0 +1,8 @@
+{
+  "location_permission_requested_only_when_needed": true,
+  "manual_location_fallback": true,
+  "manual_datetime_fallback": true,
+  "device_time_used_for_current_time": true,
+  "persistent_location_storage": false,
+  "medical_advice": false
+}

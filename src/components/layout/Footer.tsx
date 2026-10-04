@@ -100,7 +100,7 @@ export const Footer: React.FC = () => {
               </li>
               <li>
                 <Link href="/concepts" className="hover:text-[#202020] transition-colors">
-                  DWM &amp; ML Curriculum Guide
+                  Concepts &amp; Methods Guide
                 </Link>
               </li>
               <li>
