@@ -1,0 +1,16 @@
+method,endpoint,purpose
+GET,/current,Latest air-quality analytics
+GET,/history,Historical warehouse analytics
+GET,/forecast,Forecast results
+GET,/anomalies,Anomaly results and evidence
+GET,/clusters,Station pollution profiles
+GET,/olap,Parameterized warehouse OLAP
+GET,/features,Feature selection and PCA artifacts
+GET,/models,Model metrics and selected models
+GET,/schema,Warehouse structure and metadata
+GET,/data-quality,Quality reports
+GET,/etl,ETL monitoring and reconciliation
+POST,/predict/aqi,AQI regression inference
+POST,/predict/category,AQI category inference
+POST,/predict/activity-window,Activity analysis
+GET,/location/nearest-station,Nearest station lookup

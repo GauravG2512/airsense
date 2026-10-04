@@ -1,0 +1,76 @@
+{
+  "regression_selected": "XGBoost",
+  "classification_selected": "XGBoost",
+  "regression_metrics": [
+    {
+      "model": "XGBoost",
+      "mae": 30.88646688227577,
+      "rmse": 48.59214925630147,
+      "r2": 0.8404857685665728,
+      "elapsed_seconds": 4.659961938858032
+    },
+    {
+      "model": "Linear Regression",
+      "mae": 31.26429275754026,
+      "rmse": 49.32773414462684,
+      "r2": 0.8356197820086927,
+      "elapsed_seconds": 0.1618494987487793
+    },
+    {
+      "model": "Random Forest",
+      "mae": 31.245789225716887,
+      "rmse": 49.48168785283969,
+      "r2": 0.8345921071512535,
+      "elapsed_seconds": 238.87843203544617
+    },
+    {
+      "model": "Gradient Boosting",
+      "mae": 32.06557231243908,
+      "rmse": 49.48830362783298,
+      "r2": 0.8345478736336212,
+      "elapsed_seconds": 124.20101881027222
+    }
+  ],
+  "classification_metrics": [
+    {
+      "model": "XGBoost",
+      "accuracy": 0.6825,
+      "precision_macro": 0.5380054346871749,
+      "recall_macro": 0.5255434930480104,
+      "f1_macro": 0.527990828731796,
+      "elapsed_seconds": 5.073819398880005
+    },
+    {
+      "model": "Logistic Regression",
+      "accuracy": 0.6355,
+      "precision_macro": 0.4844760441232143,
+      "recall_macro": 0.5250372980500702,
+      "f1_macro": 0.4980620208037363,
+      "elapsed_seconds": 3.4120070934295654
+    },
+    {
+      "model": "Random Forest",
+      "accuracy": 0.597,
+      "precision_macro": 0.5071320755595469,
+      "recall_macro": 0.47458590853759547,
+      "f1_macro": 0.47371118292813313,
+      "elapsed_seconds": 6.7806556224823
+    },
+    {
+      "model": "Decision Tree",
+      "accuracy": 0.5485,
+      "precision_macro": 0.44099005731233404,
+      "recall_macro": 0.4542422757517353,
+      "f1_macro": 0.444318303005444,
+      "elapsed_seconds": 1.0224871635437012
+    },
+    {
+      "model": "SVM",
+      "accuracy": 0.4795,
+      "precision_macro": 0.3416825485864801,
+      "recall_macro": 0.3793551829263415,
+      "f1_macro": 0.3396662719052402,
+      "elapsed_seconds": 5.8111045360565186
+    }
+  ]
+}

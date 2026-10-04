@@ -1,0 +1,11 @@
+table_name,row_count
+dim_time,6295
+dim_station,558
+dim_state,30
+dim_city,248
+dim_location,248
+dim_pollutant,15
+dim_source,1
+dim_station_scd2,558
+fact_air_daily,8098924
+fact_air_measurement,633306

@@ -1,0 +1,7 @@
+method,artifact_available
+Correlation Filtering,True
+Mutual Information,False
+SelectKBest,False
+Recursive Feature Elimination,False
+Tree-based Feature Importance,False
+PCA,True

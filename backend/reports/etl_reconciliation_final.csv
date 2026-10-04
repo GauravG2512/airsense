@@ -1,0 +1,6 @@
+metric,value
+source_daily_rows,8835580
+clean_daily_rows,8835377
+rejected_daily_rows,203
+fact_air_daily_rows,802894
+fact_air_measurement_rows,633306

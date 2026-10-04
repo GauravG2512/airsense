@@ -1,0 +1,14 @@
+concept,implementation
+Feature Engineering,"Temporal, lag, rolling, statistical, cross-pollutant and baseline features"
+Feature Selection,"Correlation filtering, Mutual Information, SelectKBest, RFE and tree importance"
+Feature Extraction,PCA
+Clustering,"K-Means, Hierarchical Clustering and DBSCAN"
+Cluster Evaluation,"Elbow, Silhouette and Davies-Bouldin"
+Anomaly Detection,"IQR, Z-score and Isolation Forest"
+Relationship Mining,"Pollutant co-occurrence support, confidence and lift"
+Regression,"Linear Regression, Random Forest, Gradient Boosting and XGBoost"
+Classification,"Logistic Regression, Decision Tree, Random Forest, XGBoost and SVM"
+Forecasting,Hourly next-step AQI/pollution forecast and recursive 24-hour output where hourly data exist
+Validation,Chronological train/test separation
+Evaluation,"MAE, RMSE, R², Accuracy, Precision, Recall, F1, Macro F1, Confusion Matrix"
+Explainability,Global feature importance and optional SHAP

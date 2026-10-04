@@ -1,0 +1,3 @@
+fact_table,grain,measures,shared_dimensions
+Fact_Air_Measurement,One pollutant measurement × station × timestamp,measurement_value,"Time, Station, Location, Pollutant, Source"
+Fact_Air_Daily,One station × day,"daily pollutant measures, AQI","Time, Station, Location, Source"
