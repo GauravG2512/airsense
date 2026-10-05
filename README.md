@@ -35,6 +35,7 @@
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Installation & Local Setup](#installation--local-setup)
+  - [Environment Variables](#environment-variables)
   - [Available Scripts](#available-scripts)
 - [Academic & Course Mapping](#academic--course-mapping)
 - [Data Sources & Citations](#data-sources--citations)
@@ -336,48 +337,113 @@ AirSense adopts the **Ventriloc Editorial Design System**: an editorial data obs
 ### Prerequisites
 
 Ensure you have the following installed on your system:
-- **Node.js**: `v18.18.0` or higher (`v20.x` LTS or higher recommended)
+- **Node.js**: `v18.18.0` or higher (`v20.x` LTS recommended)
 - **npm**: `v9.0.0` or higher (packaged with Node.js)
+- **Python**: `3.10` or higher (`3.11` recommended)
 
 Verify your local environment:
 ```bash
 node -v
 npm -v
+python --version
 ```
 
 ---
 
 ### Installation & Local Setup
 
-1. **Clone or navigate to the project directory:**
-   ```bash
-   git clone https://github.com/rockyashp/airsense.git
-   cd airsense
-   ```
+#### 1. Backend Service (FastAPI + DuckDB)
 
-2. **Install project dependencies:**
-   ```bash
-   npm install
-   ```
+From the project root directory, install Python dependencies:
+```bash
+pip install -r backend/requirements.txt
+```
 
-3. **Start the local development server:**
-   ```bash
-   npm run dev
-   ```
+Run the FastAPI backend with live reload (port 8000):
 
-4. **Launch the application:**
-   Navigate to [http://localhost:3000](http://localhost:3000) (or [http://localhost:3001](http://localhost:3001)) in your web browser.
+- **From the project root:**
+  ```bash
+  uvicorn backend.app.main:app --reload --port 8000
+  ```
+
+- **Or from the `backend/` directory:**
+  ```bash
+  cd backend
+  uvicorn app.main:app --reload --port 8000
+  ```
+
+Once running:
+- **API Base:** [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- **Interactive Swagger Docs:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- **Health Check:** [http://127.0.0.1:8000/api/health](http://127.0.0.1:8000/api/health)
+
+#### 2. Frontend Application (Next.js 16 + React 19)
+
+In a separate terminal at the project root, install Node dependencies and launch the dev server:
+```bash
+# Install frontend dependencies
+npm install
+
+# Start Next.js development server
+npm run dev
+```
+
+Navigate to [http://localhost:3000](http://localhost:3000) in your web browser. The frontend connects to the FastAPI backend running on port 8000.
+
+---
+
+### Environment Variables
+
+The project includes `.env.example` templates for both the Next.js frontend and the FastAPI backend.
+
+#### Frontend (`.env.local` at root)
+
+| Variable | Required | Default | Purpose |
+| :--- | :--- | :--- | :--- |
+| `NEXT_PUBLIC_API_URL` | **Yes** | `http://127.0.0.1:8000` | FastAPI backend endpoint for live AQI, OLAP, and ML models |
+| `NEXT_PUBLIC_SITE_URL` | Optional | `http://localhost:3000` | Public site domain origin |
+| `NEXT_PUBLIC_APP_ENV` | Optional | `development` | Environment mode (`development`, `staging`, `production`) |
+| `NEXT_PUBLIC_CARTO_API_KEY` | Optional | *(empty)* | Custom CARTO API key for high-frequency map tile rendering |
+
+To customize, copy the template:
+```bash
+cp .env.example .env.local
+```
+
+#### Backend (`backend/.env`)
+
+| Variable | Required | Default | Purpose |
+| :--- | :--- | :--- | :--- |
+| `HOST` | Optional | `127.0.0.1` | Network interface to bind Uvicorn server |
+| `PORT` | Optional | `8000` | Server listening port |
+| `ENVIRONMENT` | Optional | `development` | Runtime environment name |
+| `CORS_ORIGINS` | Optional | `http://localhost:3000,http://127.0.0.1:3000` | Comma-separated list of allowed frontend origins |
+
+To customize, copy the template:
+```bash
+cp backend/.env.example backend/.env
+```
 
 ---
 
 ### Available Scripts
 
+#### Frontend (Root)
+
 | Command | Purpose |
 | :--- | :--- |
-| `npm run dev` | Runs the Next.js development server with hot-reload enabled |
-| `npm run build` | Compiles TypeScript and creates an optimized static production build |
+| `npm run dev` | Runs the Next.js development server with Turbopack |
+| `npm run build` | Compiles TypeScript and builds optimized production bundle |
 | `npm run start` | Serves the compiled production build locally |
 | `npm run lint` | Runs ESLint across all TypeScript and React files |
+
+#### Backend (`backend/`)
+
+| Command | Purpose |
+| :--- | :--- |
+| `uvicorn backend.app.main:app --reload --port 8000` | Starts FastAPI backend from root with auto-reload |
+| `uvicorn app.main:app --reload --port 8000` | Starts FastAPI backend from `backend/` directory |
+| `pip install -r backend/requirements.txt` | Installs all Python data & ML dependencies |
 
 ---
 
