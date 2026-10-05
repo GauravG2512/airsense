@@ -103,7 +103,7 @@ export default function OlapPage() {
   const [operation, setOperation] =
     useState<string>('Roll-up');
 
-  const [filterCity, setFilterCity] =
+  const [filterCity] =
     useState<string>('All Cities');
 
   const [result, setResult] =
@@ -166,12 +166,65 @@ export default function OlapPage() {
   };
 
   useEffect(() => {
-    loadOlap(operation);
+    let ignore = false;
+
+    Promise.resolve().then(async () => {
+      const backendOperation = operationMap[operation];
+
+      if (!backendOperation) {
+        if (!ignore) {
+          setError('Unsupported OLAP operation');
+          setLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_BASE}/api/olap?operation=${encodeURIComponent(
+            backendOperation
+          )}`,
+          { cache: 'no-store' }
+        );
+
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(
+            `AirSense API ${response.status}: ${body}`
+          );
+        }
+
+        const payload =
+          (await response.json()) as BackendOlapResponse;
+
+        if (!ignore) {
+          setResult(payload);
+          setError(null);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (!ignore) {
+          setResult(null);
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Unable to load OLAP data'
+          );
+          setLoading(false);
+        }
+      }
+    });
+
+    return () => {
+      ignore = true;
+    };
   }, [operation]);
 
   const handleOperationChange = (
     nextOperation: string
   ) => {
+    setLoading(true);
+    setError(null);
     setOperation(nextOperation);
 
     if (nextOperation === 'Roll-up') {

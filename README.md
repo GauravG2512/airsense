@@ -26,6 +26,7 @@
 
 - [Executive Summary](#executive-summary)
 - [System Architecture](#system-architecture)
+- [Repository Structure](#repository-structure)
 - [Key Platform Modules](#key-platform-modules)
 - [Route Directory & Feature Matrix](#route-directory--feature-matrix)
 - [Data Warehouse & OLAP Engineering](#data-warehouse--olap-engineering)
@@ -119,6 +120,39 @@ flowchart TD
         D --> S["Interactive Leaflet Map (/map)"]
         E --> T["Citizen Dashboard (/dashboard)"]
     end
+```
+
+---
+
+## Repository Structure
+
+```text
+├── backend/                  # FastAPI Python analytical engine & ML backend
+│   ├── app/                  # FastAPI application entrypoint (main.py)
+│   ├── data/                 # Raw & cleaned Parquet air quality datasets
+│   ├── features/             # Feature datasets, PCA projections, selections
+│   ├── mining/               # Clustering profiles, DBSCAN & association rules
+│   ├── models/               # Serialized ML models (XGBoost, IsolationForest)
+│   ├── quality_reports/      # Data quality audit reports & validation metrics
+│   ├── reports/              # Project manifests & ETL reconciliation summaries
+│   ├── ui_outputs/           # Precomputed analytical outputs served to UI
+│   ├── warehouse/            # DuckDB database & SQL schemas / OLAP scripts
+│   └── requirements.txt      # Python dependencies
+├── docs/                     # Design documentation & project specifications
+│   ├── AirSense.pdf          # Academic project report and reference paper
+│   └── DESIGN.md             # Ventriloc design system specification & tokens
+├── notebooks/                # Data science & analytics Jupyter notebooks
+│   └── AirSense_DWM_ML_COMPLETE.ipynb # End-to-end DWM & ML pipeline notebook
+├── public/                   # Static web assets & icons
+├── src/                      # Next.js 16 App Router frontend
+│   ├── app/                  # Route pages (dashboard, map, olap, warehouse, etc.)
+│   ├── components/           # UI components (analytics, map, layout, warehouse)
+│   ├── context/              # React context providers (AuthContext)
+│   └── lib/                  # Backend API client, mock data, utility functions
+├── next.config.ts            # Next.js configuration
+├── package.json              # Frontend dependencies and npm scripts
+├── tsconfig.json             # TypeScript configuration
+└── README.md                 # Project documentation
 ```
 
 ---

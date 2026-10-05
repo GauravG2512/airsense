@@ -8,7 +8,7 @@ import { AppProviders } from '@/components/providers/AppProviders';
 const spaceGrotesk = Space_Grotesk({
   variable: '--font-space-grotesk',
   subsets: ['latin'],
-  weight: ['400', '500'],
+  display: 'swap',
 });
 
 const inter = Inter({
