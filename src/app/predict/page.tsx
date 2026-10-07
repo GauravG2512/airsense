@@ -16,8 +16,9 @@ import {
   Sparkles
 } from 'lucide-react';
 import { PredictorWidget } from '@/components/dashboard/PredictorWidget';
+import { getApiBaseUrl } from '@/lib/api';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const API_BASE = getApiBaseUrl();
 
 interface FeatureImportanceItem {
   feature: string;

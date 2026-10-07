@@ -3,6 +3,19 @@
  * Source of Truth: AirSense Product Specification (XKDR India Air Quality Database)
  */
 
+export function getApiBaseUrl(): string {
+  if (process.env.AIRSENSE_API_URL) {
+    return process.env.AIRSENSE_API_URL;
+  }
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  if (typeof window !== 'undefined') {
+    return '';
+  }
+  return 'http://127.0.0.1:8000';
+}
+
 export type AqiCategory =
   | 'Good'
   | 'Satisfactory'

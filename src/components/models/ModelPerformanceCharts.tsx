@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { getApiBaseUrl } from '@/lib/api';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const API_BASE = getApiBaseUrl();
 const COLORS = ['#ff682c', '#0284c7', '#16a34a', '#7c3aed', '#d97706'];
 
 type MetricRow = Record<string, string | number | null | undefined> & {

@@ -6,10 +6,9 @@ import { ArrowRight } from 'lucide-react';
 import { AqiBadge } from '@/components/ui/AqiBadge';
 import { DisclaimerBanner } from '@/components/ui/DisclaimerBanner';
 import { PredictorWidget } from '@/components/dashboard/PredictorWidget';
-import { CPCB_AQI_CATEGORIES, getAqiCategory } from '@/lib/api';
+import { CPCB_AQI_CATEGORIES, getAqiCategory, getApiBaseUrl } from '@/lib/api';
 
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const API_BASE = getApiBaseUrl();
 
 type CitySnapshot = {
   city_name: string;

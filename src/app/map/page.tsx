@@ -6,10 +6,10 @@ import Link from 'next/link';
 import { AlertCircle, RotateCcw, Search } from 'lucide-react';
 import { AqiBadge } from '@/components/ui/AqiBadge';
 import { DisclaimerBanner } from '@/components/ui/DisclaimerBanner';
-import { CPCB_AQI_CATEGORIES, getAqiCategory } from '@/lib/api';
+import { CPCB_AQI_CATEGORIES, getAqiCategory, getApiBaseUrl } from '@/lib/api';
 import type { MapStation } from '@/lib/map-data';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const API_BASE = getApiBaseUrl();
 
 const MAJOR_CITIES = new Set([
   'Ahmedabad',

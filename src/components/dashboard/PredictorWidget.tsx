@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { Cpu, RefreshCw, AlertCircle, ArrowUpRight, ArrowDownRight, Clock, ShieldAlert, Sparkles, Navigation, MapPin } from 'lucide-react';
 import { AqiBadge } from '@/components/ui/AqiBadge';
-import { AqiCategory } from '@/lib/api';
+import { AqiCategory, getApiBaseUrl } from '@/lib/api';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const API_BASE = getApiBaseUrl();
 
 interface PredictionResponse {
   city: string;
