@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import { getApiBaseUrl } from '@/lib/api';
 
 const API_BASE = getApiBaseUrl();
