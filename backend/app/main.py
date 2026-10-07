@@ -49,17 +49,18 @@ default_origins = [
     "http://127.0.0.1:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3001",
-    "http://localhost:3002",
-    "http://127.0.0.1:3002",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
 ]
 
+all_origins = list(dict.fromkeys(default_origins + configured_origins))
+allow_all = "*" in configured_origins or os.getenv("CORS_ORIGINS", "") == "*"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list(dict.fromkeys(default_origins + configured_origins)),
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
-    allow_credentials=True,
+    allow_origins=["*"] if allow_all else all_origins,
+    allow_origin_regex=None if allow_all else r"^https?://.*$",
+    allow_credentials=not allow_all,
     allow_methods=["*"],
     allow_headers=["*"],
 )
