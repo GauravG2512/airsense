@@ -14,6 +14,7 @@ export const Navbar: React.FC = () => {
 
   const primaryNavItems = [
     { name: 'Dashboard', href: '/dashboard' },
+    { name: 'AI Forecast', href: '/predict' },
     { name: 'Map', href: '/map' },
     { name: 'Analytics', href: '/analytics' },
     { name: 'Data Mining', href: '/datamining' },
@@ -22,6 +23,7 @@ export const Navbar: React.FC = () => {
     { name: 'OLAP', href: '/olap' },
     { name: 'Pipeline', href: '/pipeline' },
   ];
+
 
   const secondaryNavItems = [
     { name: 'Features Store', href: '/features' },

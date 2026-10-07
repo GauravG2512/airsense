@@ -5,7 +5,9 @@ import Link from 'next/link';
 import { ArrowRight } from 'lucide-react';
 import { AqiBadge } from '@/components/ui/AqiBadge';
 import { DisclaimerBanner } from '@/components/ui/DisclaimerBanner';
+import { PredictorWidget } from '@/components/dashboard/PredictorWidget';
 import { CPCB_AQI_CATEGORIES, getAqiCategory } from '@/lib/api';
+
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
@@ -296,9 +298,17 @@ export default function HomePage() {
       </section>
 
       {/* ========================================================================= */}
+      {/* AI AQI PREDICTION SECTION */}
+      {/* ========================================================================= */}
+      <section className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8">
+        <PredictorWidget />
+      </section>
+
+      {/* ========================================================================= */}
       {/* SECTION 1: 6-STAGE PIPELINE (Ash Surface Band) */}
       {/* ========================================================================= */}
       <section className="bg-[#efefef] py-20">
+
         <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
           <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-3 border-b border-[#e8e8e8] pb-4">
             <div>

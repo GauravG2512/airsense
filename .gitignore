@@ -54,3 +54,7 @@ __pycache__/
 # Jupyter Notebooks
 .ipynb_checkpoints/
 */.ipynb_checkpoints/*
+
+# Nested duplicate folder
+airsense/
+

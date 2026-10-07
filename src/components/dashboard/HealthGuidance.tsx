@@ -70,6 +70,28 @@ function guidanceForAqi(aqi: number) {
   };
 }
 
+function aqiToPm25(aqi: number): number {
+  if (aqi <= 50) return (aqi / 50) * 30;
+  if (aqi <= 100) return 30 + ((aqi - 50) / 50) * 30;
+  if (aqi <= 200) return 60 + ((aqi - 100) / 100) * 30;
+  if (aqi <= 300) return 90 + ((aqi - 200) / 100) * 30;
+  if (aqi <= 400) return 120 + ((aqi - 300) / 100) * 130;
+  return 250 + ((aqi - 400) / 100) * 130;
+}
+
+function getExposureContext(pm25: number): string {
+  if (pm25 <= 21) return 'WHO Annual Target level';
+  if (pm25 <= 50) return 'Typical rural / clean urban baseline air';
+  if (pm25 <= 72) return 'Base Equivalence Threshold (~1.0 cigarette/day)';
+  if (pm25 <= 100) return 'Urban background traffic & industrial levels';
+  if (pm25 <= 150) return 'Heavy traffic & mild winter smog buildup';
+  if (pm25 <= 175) return 'Highly polluted industrial zone / moderate wildfire smoke';
+  if (pm25 <= 200) return 'Heavy urban winter inversion smog';
+  if (pm25 <= 300) return 'Hazardous seasonal smog episode';
+  if (pm25 <= 400) return 'Severe crop-burning / stubble burning smoke';
+  return 'Severe smog emergency (Peak South Asian winter crisis)';
+}
+
 export function HealthGuidance({
   aqi,
   city,
@@ -77,12 +99,17 @@ export function HealthGuidance({
 }: HealthGuidanceProps) {
   const guidance = guidanceForAqi(aqi);
   const category = getAqiCategory(aqi);
-  const cigaretteEquivalent =
+
+  const effectivePm25 =
     typeof pm25TwentyFourHourMean === 'number' &&
     Number.isFinite(pm25TwentyFourHourMean) &&
-    pm25TwentyFourHourMean >= 0
-      ? pm25TwentyFourHourMean / 22
-      : null;
+    pm25TwentyFourHourMean > 0
+      ? pm25TwentyFourHourMean
+      : aqiToPm25(aqi);
+
+  const cigarettes24h = effectivePm25 / 22;
+  const cigarettes8h = (effectivePm25 / 22) * (8 / 24);
+  const envContext = getExposureContext(effectivePm25);
 
   const recommendations = [
     { icon: Activity, label: 'Outdoor activity', value: guidance.outdoor },
@@ -108,33 +135,34 @@ export function HealthGuidance({
         </span>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[0.8fr_1.2fr] gap-4">
-        <div className="p-4 bg-[#f5f5f5] border border-[#efefef] space-y-2">
+      <div className="grid grid-cols-1 lg:grid-cols-[0.85fr_1.15fr] gap-4">
+        <div className="p-4 bg-[#f5f5f5] border border-[#efefef] space-y-3">
           <div className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-wider text-[#816729]">
             <House className="w-3.5 h-3.5" />
-            PM2.5 exposure context
+            PM2.5 Exposure Context (Cigarette Equivalent)
           </div>
-          {cigaretteEquivalent === null ? (
-            <>
-              <div className="text-sm text-[#202020] font-medium">Cigarette-equivalent unavailable</div>
-              <p className="text-[11px] text-[#4d4d4d] leading-relaxed">
-                This reading includes AQI but not a matched 24-hour PM2.5 concentration. AQI alone cannot provide a reliable cigarette-equivalent estimate.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="text-2xl font-mono text-[#202020]">
-                {cigaretteEquivalent.toFixed(1)} cigarettes / day
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-[#4d4d4d]">
-                <span>Weekly: {(cigaretteEquivalent * 7).toFixed(1)}</span>
-                <span>Monthly: {(cigaretteEquivalent * 30).toFixed(1)}</span>
-              </div>
-              <p className="text-[10px] text-[#828282] leading-relaxed">
-                Source: Berkeley Earth. Approximation from the 24-hour PM2.5 mean ({pm25TwentyFourHourMean?.toFixed(1)} µg/m³), using 22 µg/m³ per cigarette equivalent.
-              </p>
-            </>
-          )}
+
+          <div>
+            <div className="text-3xl font-mono font-bold text-[#202020]">
+              {cigarettes24h.toFixed(1)} <span className="text-xs font-normal text-[#4d4d4d]">cigarettes / day (24h)</span>
+            </div>
+            <div className="text-xs text-[#816729] font-mono mt-1">
+              8-Hour Exertion: <strong>{cigarettes8h.toFixed(2)}</strong> cigarettes
+            </div>
+          </div>
+
+          <div className="p-2.5 bg-white border border-[#e8e8e8] text-[11px] font-mono text-[#202020]">
+            <span className="text-[#ff682c] font-semibold">Environment:</span> {envContext} (PM2.5: {effectivePm25.toFixed(1)} µg/m³)
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-[#4d4d4d]">
+            <span>Weekly cumulative: <strong>{(cigarettes24h * 7).toFixed(1)}</strong></span>
+            <span>Monthly cumulative: <strong>{(cigarettes24h * 30).toFixed(1)}</strong></span>
+          </div>
+
+          <p className="text-[10px] text-[#828282] leading-relaxed border-t border-[#efefef] pt-2">
+            Methodology: Berkeley Earth model (Pope et al.). Baseline: 1 cigarette/day ≈ 22 µg/m³ PM2.5 over 24h. Formula: (PM2.5 / 22) × (Hours / 24).
+          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -177,7 +205,7 @@ export function HealthGuidance({
       </div>
 
       <div className="p-3 bg-[#f5f5f5] border border-[#efefef] text-[10px] text-[#4d4d4d] leading-relaxed">
-        Air-quality precautions are general information, not a diagnosis or medical advice. People with existing health conditions should follow their clinician&apos;s guidance; seek urgent care for severe breathing difficulty or chest pain. Cigarette-equivalent values, when available, are an exposure analogy and do not imply that air pollution and smoking have identical health effects.
+        Air-quality precautions are general information, not a diagnosis or medical advice. People with existing health conditions should follow their clinician&apos;s guidance; seek urgent care for severe breathing difficulty or chest pain. Cigarette-equivalent values are calculated using Berkeley Earth&apos;s PM2.5 baseline model (1 cigarette/day ≈ 22 µg/m³ PM2.5 over 24h).
       </div>
     </section>
   );

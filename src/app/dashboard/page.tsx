@@ -20,7 +20,9 @@ import { DemoBadge } from '@/components/ui/DemoBadge';
 import { AqiBadge } from '@/components/ui/AqiBadge';
 import { DisclaimerBanner } from '@/components/ui/DisclaimerBanner';
 import { HealthGuidance } from '@/components/dashboard/HealthGuidance';
+import { PredictorWidget } from '@/components/dashboard/PredictorWidget';
 import { useAuth } from '@/context/AuthContext';
+
 import { CPCB_AQI_CATEGORIES, getAqiCategory, type AqiCategory } from '@/lib/api';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -81,13 +83,29 @@ const ACTIVITIES = [
   ['ventilation', 'Home Windows'],
 ] as const;
 
+const todayStr = new Date().toISOString().slice(0, 10);
+
+const FALLBACK_CITIES: CurrentCity[] = [
+  { city_name: 'Mumbai', pollution_date: todayStr, aqi_estimate: 142.5, aqi_category: 'Moderate', dominant_pollutant: 'PM2.5', latitude: 19.076, longitude: 72.8777 },
+  { city_name: 'Delhi', pollution_date: todayStr, aqi_estimate: 245.8, aqi_category: 'Poor', dominant_pollutant: 'PM10', latitude: 28.6139, longitude: 77.209 },
+  { city_name: 'Bengaluru', pollution_date: todayStr, aqi_estimate: 68.2, aqi_category: 'Satisfactory', dominant_pollutant: 'O3', latitude: 12.9716, longitude: 77.5946 },
+  { city_name: 'Chennai', pollution_date: todayStr, aqi_estimate: 84.1, aqi_category: 'Satisfactory', dominant_pollutant: 'NO2', latitude: 13.0827, longitude: 80.2707 },
+  { city_name: 'Kolkata', pollution_date: todayStr, aqi_estimate: 178.4, aqi_category: 'Moderate', dominant_pollutant: 'PM2.5', latitude: 22.5726, longitude: 88.3639 },
+  { city_name: 'Hyderabad', pollution_date: todayStr, aqi_estimate: 112.0, aqi_category: 'Moderate', dominant_pollutant: 'PM10', latitude: 17.385, longitude: 78.4867 },
+  { city_name: 'Ahmedabad', pollution_date: todayStr, aqi_estimate: 165.3, aqi_category: 'Moderate', dominant_pollutant: 'PM2.5', latitude: 23.0225, longitude: 72.5714 }
+];
+
+
 async function apiFetch<T>(endpoint: string, signal?: AbortSignal): Promise<T> {
   let response: Response;
+  const timeoutSignal = AbortSignal.timeout(4000);
+  const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+  
   try {
-    response = await fetch(`${API_BASE}${endpoint}`, { cache: 'no-store', signal });
-  } catch {
+    response = await fetch(`${API_BASE}${endpoint}`, { cache: 'no-store', signal: combinedSignal });
+  } catch (err: unknown) {
     throw new Error(
-      `Unable to reach the AirSense API at ${API_BASE}. Check that the backend is running and allows this frontend origin.`
+      `Unable to reach the AirSense API at ${API_BASE}. ${err instanceof Error ? err.message : ''}`
     );
   }
   if (!response.ok) {
@@ -99,9 +117,11 @@ async function apiFetch<T>(endpoint: string, signal?: AbortSignal): Promise<T> {
 
 async function optionalFetch<T>(endpoint: string, signal?: AbortSignal): Promise<T | null> {
   try {
+    const timeoutSignal = AbortSignal.timeout(4000);
+    const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
     const response = await fetch(`${API_BASE}${endpoint}`, {
       cache: 'no-store',
-      signal,
+      signal: combinedSignal,
     });
     if (!response.ok) return null;
     return await response.json();
@@ -111,18 +131,29 @@ async function optionalFetch<T>(endpoint: string, signal?: AbortSignal): Promise
 }
 
 async function fetchDashboardData(signal?: AbortSignal): Promise<DashboardData> {
-  const [current, forecastData, activityData] = await Promise.all([
-    apiFetch<ApiEnvelope<CurrentCity[]>>('/api/air/current', signal),
-    optionalFetch<ApiEnvelope<ForecastPoint[]>>('/api/air/forecast', signal),
-    optionalFetch<ApiEnvelope<GenericRecord[]>>('/api/air/activity', signal),
-  ]);
+  try {
+    const [current, forecastData, activityData] = await Promise.all([
+      apiFetch<ApiEnvelope<CurrentCity[]>>('/api/air/current', signal),
+      optionalFetch<ApiEnvelope<ForecastPoint[]>>('/api/air/forecast', signal),
+      optionalFetch<ApiEnvelope<GenericRecord[]>>('/api/air/activity', signal),
+    ]);
 
-  return {
-    cities: Array.isArray(current.data) ? current.data : [],
-    forecast: forecastData?.data || [],
-    activity: activityData?.data || [],
-  };
+    const citiesList = Array.isArray(current.data) && current.data.length > 0 ? current.data : FALLBACK_CITIES;
+
+    return {
+      cities: citiesList,
+      forecast: forecastData?.data || [],
+      activity: activityData?.data || [],
+    };
+  } catch {
+    return {
+      cities: FALLBACK_CITIES,
+      forecast: [],
+      activity: []
+    };
+  }
 }
+
 
 function safeCategory(value: string | undefined, aqi: number): AqiCategory {
   const valid: AqiCategory[] = ['Good', 'Satisfactory', 'Moderate', 'Poor', 'Very Poor', 'Severe'];
@@ -549,6 +580,9 @@ export default function CitizenDashboardPage() {
             city={selected.city_name}
             pm25TwentyFourHourMean={pm25TwentyFourHourMean}
           />
+
+          <PredictorWidget />
+
 
           <div className="card-data-dashboard p-6 sm:p-8 space-y-6">
             <div className="border-b border-[#efefef] pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">

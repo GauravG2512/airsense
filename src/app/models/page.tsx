@@ -32,8 +32,14 @@ export default function ModelsPage() {
             Model Evaluation &amp; Comparison Lab
           </h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <DemoBadge label="OFFLINE VALIDATION ARTIFACTS" />
+          <Link
+            href="/predict"
+            className="btn-primary-sharp text-xs py-1.5 px-3 bg-[#202020] text-white hover:bg-[#ff682c] transition-colors"
+          >
+            AI Forecast Studio →
+          </Link>
           <Link
             href="/explain"
             className="btn-ghost-sharp text-xs py-1.5 px-3"
@@ -41,6 +47,7 @@ export default function ModelsPage() {
             Explainability (SHAP) →
           </Link>
         </div>
+
       </div>
 
       {/* Leakage Prevention Alert (Asymmetric card on Ash) */}
