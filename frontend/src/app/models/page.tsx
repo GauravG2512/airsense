@@ -229,17 +229,17 @@ export default function ModelsPage() {
           <div className="border-b border-[#d8d0c2] pb-3">
             <span className="text-[11px] font-mono uppercase text-[#816729]">Architecture Decision</span>
             <h3 className="text-lg text-[#202020]" style={{ fontFamily: 'var(--font-heading)' }}>
-              Selected Production Model: XGBoost Regressor (v1.3)
+              Selected Production Model: LightGBM Regressor (Production Champion)
             </h3>
           </div>
 
           <div className="space-y-2 font-mono text-xs">
             <div className="text-[#202020] uppercase font-semibold">Selection Rationale:</div>
             <ul className="space-y-1.5 text-[#4d4d4d] font-sans text-xs">
-              <li>• <strong>Lowest Validation RMSE (16.7):</strong> Minimizes catastrophic error spikes during sudden thermal inversion episodes.</li>
-              <li>• <strong>Competitive MAE (12.9):</strong> Ensures average error remains well within the width of single CPCB category bands.</li>
-              <li>• <strong>Stable Out-of-Fold Generalization:</strong> Consistency across seasonal cross-validation without winter overfitting.</li>
-              <li>• <strong>Sub-3ms Inference Cost:</strong> Capable of scoring 558 stations concurrently within FastAPI SLA limits (&lt;2 seconds).</li>
+              <li>• <strong>Lowest Validation RMSE (24.478 vs 24.493):</strong> Penalizes extreme pollution spike errors during sudden thermal inversion episodes more effectively than XGBoost.</li>
+              <li>• <strong>Competitive MAE (10.706):</strong> Ensures average forecasting fidelity remains well within narrow CPCB AQI category bands.</li>
+              <li>• <strong>Robust Out-of-Sample Generalization:</strong> Verified on the 2026 holdout dataset with zero temporal lookahead leakage (R² = 0.8150).</li>
+              <li>• <strong>Fast 2.15ms Latency &amp; Histogram Binning:</strong> Scales across multi-station batch inference with minimal memory footprint.</li>
             </ul>
           </div>
         </div>

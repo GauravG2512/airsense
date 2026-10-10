@@ -27,6 +27,7 @@ interface PredictionResponse {
   target_horizon?: string;
   mode?: string;
   advanced_inputs?: Record<string, number>;
+  custom_conditions?: string;
   latest_observed_aqi: number;
   latest_observed_category: string;
   predicted_aqi: number;
@@ -35,28 +36,63 @@ interface PredictionResponse {
   aqi_difference: number;
   health_advisory?: string;
   atmospheric_summary?: string;
+  source_attribution?: string;
   model_name: string;
   is_ml_forecast: boolean;
   disclaimer: string;
 }
 
 const DEFAULT_CITIES = [
-  'Delhi',
-  'Mumbai',
-  'Bengaluru',
-  'Chennai',
-  'Kolkata',
-  'Hyderabad',
-  'Ahmedabad',
-  'Pune',
-  'Jaipur',
-  'Lucknow',
-  'Patna',
-  'Chandigarh',
-  'Varanasi',
   'Agra',
+  'Ahmedabad',
+  'Amritsar',
+  'Bengaluru',
+  'Bhopal',
+  'Bhubaneswar',
+  'Chandigarh',
+  'Chennai',
+  'Coimbatore',
+  'Dehradun',
+  'Delhi',
   'Faridabad',
+  'Ghaziabad',
   'Gurugram',
+  'Guwahati',
+  'Gwalior',
+  'Hyderabad',
+  'Indore',
+  'Jaipur',
+  'Jodhpur',
+  'Kalyan',
+  'Kanpur',
+  'Kochi',
+  'Kolkata',
+  'Kota',
+  'Lucknow',
+  'Ludhiana',
+  'Madurai',
+  'Meerut',
+  'Moradabad',
+  'Mumbai',
+  'Mysuru',
+  'Nagpur',
+  'Nashik',
+  'Navi Mumbai',
+  'Noida',
+  'Patna',
+  'Prayagraj',
+  'Pune',
+  'Raipur',
+  'Rajkot',
+  'Ranchi',
+  'Srinagar',
+  'Surat',
+  'Thane',
+  'Thiruvananthapuram',
+  'Vadodara',
+  'Varanasi',
+  'Vijayawada',
+  'Visakhapatnam'
 ];
 
 export const PredictorWidget: React.FC = () => {
@@ -65,7 +101,7 @@ export const PredictorWidget: React.FC = () => {
 
   // Basic Parameters
   const [cities, setCities] = useState<string[]>(DEFAULT_CITIES);
-  const [selectedCity, setSelectedCity] = useState<string>('Delhi');
+  const [selectedCity, setSelectedCity] = useState<string>('Mumbai');
   const [targetHorizon, setTargetHorizon] = useState<string>('Next-Hour (t+1)');
   const [targetTime, setTargetTime] = useState<string>(() => {
     const now = new Date();
@@ -83,6 +119,7 @@ export const PredictorWidget: React.FC = () => {
   const [nh3, setNh3] = useState<string>('');
   const [temperature, setTemperature] = useState<string>('');
   const [humidity, setHumidity] = useState<string>('');
+  const [customConditions, setCustomConditions] = useState<string>('');
 
   // UI state
   const [loading, setLoading] = useState<boolean>(false);
@@ -196,6 +233,7 @@ export const PredictorWidget: React.FC = () => {
     setNh3('');
     setTemperature('');
     setHumidity('');
+    setCustomConditions('');
   };
 
   const handlePredict = async () => {
@@ -203,9 +241,10 @@ export const PredictorWidget: React.FC = () => {
     setError(null);
 
     const payload: Record<string, string | number | null> = {
-      city: selectedCity,
+      city: selectedCity.trim() || 'Mumbai',
       target_timestamp: targetTime,
       horizon: targetHorizon,
+      custom_conditions: customConditions.trim() || null,
     };
 
     if (forecastMode === 'advanced') {
@@ -268,7 +307,7 @@ export const PredictorWidget: React.FC = () => {
         {/* Engine Badge */}
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#efefef] text-[#202020] border border-[#e8e8e8] font-mono text-[11px]">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Engine: AirSense Neural Atmospheric Model</span>
+          <span>Engine: AirSense Neural Atmospheric Ensemble</span>
         </div>
       </div>
 
@@ -283,7 +322,7 @@ export const PredictorWidget: React.FC = () => {
               : 'bg-[#f5f5f5] text-[#4d4d4d] hover:text-[#202020]'
           }`}
         >
-          1. Basic Parameters
+          1. Standard Atmospheric Mode
         </button>
         <button
           type="button"
@@ -295,19 +334,19 @@ export const PredictorWidget: React.FC = () => {
           }`}
         >
           <Sliders className="w-3.5 h-3.5" />
-          <span>2. Advanced Parameters (Optional Pollutants)</span>
+          <span>2. Advanced Pollutants &amp; Dispersion</span>
         </button>
       </div>
 
       {/* Control Inputs */}
       <div className="space-y-4 bg-[#f9f9f9] p-5 border border-[#e8e8e8]">
         {/* Row 1: Common Basic Controls */}
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-start">
           {/* City Selector */}
           <div className="sm:col-span-5 space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="block text-xs font-mono text-[#4d4d4d] uppercase">
-                Target City
+              <label className="block text-xs font-mono text-[#4d4d4d] uppercase font-semibold">
+                Indian City / Monitoring Station
               </label>
               <button
                 type="button"
@@ -320,41 +359,69 @@ export const PredictorWidget: React.FC = () => {
                 <span>{locating ? 'Locating...' : 'Use current location'}</span>
               </button>
             </div>
-            <select
+            <input
+              type="text"
+              list="city-options-list"
               value={selectedCity}
               onChange={(e) => setSelectedCity(e.target.value)}
+              placeholder="Select or type any Indian city (e.g. Mumbai, Delhi, Kalyan...)"
               disabled={loading}
-              className="w-full bg-[#ffffff] border border-[#e8e8e8] px-3 py-2 text-sm text-[#202020] font-sans focus:outline-none focus:border-[#202020] transition-colors"
-            >
+              className="w-full bg-[#ffffff] border border-[#e8e8e8] px-3 py-2 text-sm text-[#202020] font-sans focus:outline-none focus:border-[#202020] transition-colors placeholder:text-[#999999]"
+            />
+            <datalist id="city-options-list">
               {cities.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
+                <option key={c} value={c} />
               ))}
-            </select>
+            </datalist>
+            <div className="flex flex-wrap items-center gap-1 pt-1">
+              <span className="text-[10px] font-mono text-[#828282]">Quick picks:</span>
+              {['Mumbai', 'Delhi', 'Bengaluru', 'Pune', 'Hyderabad', 'Kolkata', 'Chennai', 'Jaipur', 'Kalyan', 'Ahmedabad'].map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setSelectedCity(c)}
+                  className={`text-[10px] font-mono px-2 py-0.5 border rounded transition-colors ${
+                    selectedCity.toLowerCase() === c.toLowerCase()
+                      ? 'bg-[#202020] text-white border-[#202020]'
+                      : 'bg-[#ffffff] text-[#4d4d4d] border-[#e8e8e8] hover:border-[#202020]'
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Forecast Horizon */}
           <div className="sm:col-span-3 space-y-1.5">
-            <label className="block text-xs font-mono text-[#4d4d4d] uppercase">
+            <label className="block text-xs font-mono text-[#4d4d4d] uppercase font-semibold">
               Forecast Horizon
             </label>
-            <select
+            <input
+              type="text"
+              list="horizon-options-list"
               value={targetHorizon}
               onChange={(e) => setTargetHorizon(e.target.value)}
+              placeholder="e.g. Next-Hour (t+1)"
               disabled={loading}
               className="w-full bg-[#ffffff] border border-[#e8e8e8] px-3 py-2 text-xs font-mono text-[#202020] focus:outline-none focus:border-[#202020] transition-colors"
-            >
-              <option value="Next-Hour (t+1)">Next-Hour (t+1)</option>
-              <option value="6-Hour Window">6-Hour Window</option>
-              <option value="24-Hour Diurnal">24-Hour Diurnal</option>
-            </select>
+            />
+            <datalist id="horizon-options-list">
+              <option value="Next-Hour (t+1)" />
+              <option value="6-Hour Window" />
+              <option value="24-Hour Diurnal" />
+              <option value="48-Hour Weekend" />
+              <option value="7-Day Weekly Trend" />
+            </datalist>
+            <div className="text-[10px] font-mono text-[#828282] pt-1">
+              Choose or type any horizon
+            </div>
           </div>
 
           {/* Target Timestamp */}
           <div className="sm:col-span-4 space-y-1.5">
-            <label className="block text-xs font-mono text-[#4d4d4d] uppercase">
-              Target Timestamp
+            <label className="block text-xs font-mono text-[#4d4d4d] uppercase font-semibold">
+              Target Date &amp; Time
             </label>
             <input
               type="datetime-local"
@@ -363,6 +430,31 @@ export const PredictorWidget: React.FC = () => {
               disabled={loading}
               className="w-full bg-[#ffffff] border border-[#e8e8e8] px-3 py-2 text-xs font-mono text-[#202020] focus:outline-none focus:border-[#202020] transition-colors"
             />
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const now = new Date();
+                  const tzOffset = now.getTimezoneOffset() * 60000;
+                  setTargetTime(new Date(now.getTime() - tzOffset).toISOString().slice(0, 16) + ':00');
+                }}
+                className="text-[10px] font-mono text-[#816729] hover:underline"
+              >
+                Set to Now
+              </button>
+              <span className="text-[#d8d8d8]">|</span>
+              <button
+                type="button"
+                onClick={() => {
+                  const tomorrow = new Date(Date.now() + 24 * 3600 * 1000);
+                  const tzOffset = tomorrow.getTimezoneOffset() * 60000;
+                  setTargetTime(new Date(tomorrow.getTime() - tzOffset).toISOString().slice(0, 16) + ':00');
+                }}
+                className="text-[10px] font-mono text-[#816729] hover:underline"
+              >
+                Tomorrow (+24h)
+              </button>
+            </div>
           </div>
         </div>
 
@@ -553,6 +645,21 @@ export const PredictorWidget: React.FC = () => {
                 />
               </div>
             </div>
+
+            {/* Custom Atmospheric / Weather Context */}
+            <div className="pt-2">
+              <label className="block text-[11px] font-mono text-[#4d4d4d] mb-1">
+                Custom Local Conditions / Weather Notes <span className="text-[10px] text-[#828282]">(Optional dispersion context)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Heavy morning winter fog, 35 km/h thunderstorm winds, coastal sea breeze, festive firecrackers, high humidity..."
+                value={customConditions}
+                onChange={(e) => setCustomConditions(e.target.value)}
+                disabled={loading}
+                className="w-full bg-[#ffffff] border border-[#e8e8e8] px-3 py-2 text-xs font-mono text-[#202020] focus:outline-none focus:border-[#202020] placeholder:text-[#999999]"
+              />
+            </div>
           </div>
         )}
 
@@ -566,8 +673,8 @@ export const PredictorWidget: React.FC = () => {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             <span>
               {loading
-                ? 'Consulting AirSense Neural Forecasting Engine...'
-                : `Run AI Forecast (${forecastMode === 'advanced' ? 'Advanced Pollutants Mode' : 'Basic Mode'})`}
+                ? 'Executing AirSense Neural Inference...'
+                : `Run AirSense Forecast (${forecastMode === 'advanced' ? 'Advanced Feature Vector' : 'Warehouse Baseline'})`}
             </span>
           </button>
         </div>
@@ -578,12 +685,11 @@ export const PredictorWidget: React.FC = () => {
         <div className="p-6 bg-[#f9f9f9] border border-dashed border-[#d8d8d8] text-center space-y-2">
           <Cpu className="w-8 h-8 text-[#816729] mx-auto opacity-60" />
           <div className="text-sm font-sans font-medium text-[#202020]">
-            Ready for AI Atmospheric Forecast
+            Ready for AirSense Neural Atmospheric Forecast
           </div>
           <p className="text-xs text-[#666666] max-w-lg mx-auto leading-relaxed">
-            Select a target city under <strong className="text-[#202020]">Basic Parameters</strong>, or switch to{' '}
-            <strong className="text-[#202020]">Advanced Parameters</strong> to test custom PM2.5, PM10, CO, NO2, or SO2 readings.
-            AirSense Neural Engine will compute the official CPCB standard AQI and tailored health guidance.
+            Select any warehouse station from your continuous monitoring dataset, configure the target horizon,
+            and run the forecast. The AirSense Neural Ensemble evaluates criteria pollutants and diurnal atmospheric dispersion.
           </p>
         </div>
       )}
@@ -607,7 +713,7 @@ export const PredictorWidget: React.FC = () => {
             <div className="p-4 bg-[#efefef] border border-[#e8e8e8] space-y-2">
               <div className="text-[11px] font-mono text-[#828282] uppercase tracking-tight flex items-center justify-between">
                 <span>Baseline Observed</span>
-                <span className="text-[10px] text-[#4d4d4d]">{prediction.city}</span>
+                <span className="text-[10px] text-[#4d4d4d] font-semibold">{prediction.city}</span>
               </div>
               <div className="flex items-baseline justify-between">
                 <span className="text-3xl font-mono font-semibold text-[#202020]">
@@ -620,7 +726,7 @@ export const PredictorWidget: React.FC = () => {
                 />
               </div>
               <div className="text-[11px] text-[#4d4d4d] font-mono">
-                Historical baseline prior to forecast
+                Current baseline prior to horizon
               </div>
             </div>
 
@@ -629,7 +735,7 @@ export const PredictorWidget: React.FC = () => {
               <div className="text-[11px] font-mono text-[#ff682c] uppercase font-semibold flex items-center justify-between">
                 <span>Predicted Forecast</span>
                 <span className="text-[10px] px-1.5 py-0.5 bg-[#ff682c]/10 text-[#ff682c] rounded border border-[#ff682c]/20">
-                  {prediction.mode || (forecastMode === 'advanced' ? 'ADVANCED' : 'BASIC')}
+                  {prediction.mode || (forecastMode === 'advanced' ? 'ADVANCED' : 'LIVE AI')}
                 </span>
               </div>
               <div className="flex items-baseline justify-between">
@@ -684,15 +790,15 @@ export const PredictorWidget: React.FC = () => {
             </div>
           </div>
 
-          {/* AI Insights & Health Advisory Cards */}
-          {(prediction.health_advisory || prediction.atmospheric_summary) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* AI Insights, Health Advisory & Source Attribution Cards */}
+          {(prediction.health_advisory || prediction.atmospheric_summary || prediction.source_attribution) && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Health Advisory */}
               {prediction.health_advisory && (
                 <div className="p-4 bg-[#fdfbf7] border border-[#816729]/30 rounded space-y-1.5">
                   <div className="text-[11px] font-mono uppercase text-[#816729] font-semibold flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-[#816729]" />
-                    <span>AirSense Health &amp; Activity Advisory</span>
+                    <span>Health &amp; Activity Advisory</span>
                   </div>
                   <p className="text-xs text-[#202020] leading-relaxed font-sans">
                     {prediction.health_advisory}
@@ -705,10 +811,23 @@ export const PredictorWidget: React.FC = () => {
                 <div className="p-4 bg-[#f5f5f5] border border-[#e8e8e8] rounded space-y-1.5">
                   <div className="text-[11px] font-mono uppercase text-[#4d4d4d] font-semibold flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-[#ff682c]" />
-                    <span>Atmospheric &amp; Meteorological Diagnostics</span>
+                    <span>Atmospheric &amp; Weather Diagnostics</span>
                   </div>
                   <p className="text-xs text-[#4d4d4d] leading-relaxed font-sans">
                     {prediction.atmospheric_summary}
+                  </p>
+                </div>
+              )}
+
+              {/* Source Attribution */}
+              {prediction.source_attribution && (
+                <div className="p-4 bg-[#fafafa] border border-[#e8e8e8] rounded space-y-1.5">
+                  <div className="text-[11px] font-mono uppercase text-[#4d4d4d] font-semibold flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#202020]" />
+                    <span>Emission &amp; Source Attribution</span>
+                  </div>
+                  <p className="text-xs text-[#4d4d4d] leading-relaxed font-sans">
+                    {prediction.source_attribution}
                   </p>
                 </div>
               )}
@@ -722,12 +841,12 @@ export const PredictorWidget: React.FC = () => {
               <span className="text-[#202020] font-semibold">{prediction.model_name}</span>
             </div>
             <div>
-              <span className="text-[#828282]">Standard:</span>{' '}
-              <span className="text-[#816729] font-medium">CPCB 24-Hour Breakpoint Formula</span>
+              <span className="text-[#828282]">Standards:</span>{' '}
+              <span className="text-[#816729] font-medium">CPCB National Air Quality Index (NAQI)</span>
             </div>
             <div>
               <span className="text-[#828282]">Status:</span>{' '}
-              <span className="text-emerald-700 font-medium">Verified Active</span>
+              <span className="text-emerald-700 font-medium">Trained Neural Ensemble Active</span>
             </div>
           </div>
         </div>

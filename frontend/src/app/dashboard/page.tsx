@@ -14,6 +14,7 @@ import {
   MapPin,
   Navigation,
   RefreshCw,
+  Search,
   User,
 } from 'lucide-react';
 import { DemoBadge } from '@/components/ui/DemoBadge';
@@ -93,6 +94,21 @@ const FALLBACK_CITIES: CurrentCity[] = [
   { city_name: 'Kolkata', pollution_date: todayStr, aqi_estimate: 178.4, aqi_category: 'Moderate', dominant_pollutant: 'PM2.5', latitude: 22.5726, longitude: 88.3639 },
   { city_name: 'Hyderabad', pollution_date: todayStr, aqi_estimate: 112.0, aqi_category: 'Moderate', dominant_pollutant: 'PM10', latitude: 17.385, longitude: 78.4867 },
   { city_name: 'Ahmedabad', pollution_date: todayStr, aqi_estimate: 165.3, aqi_category: 'Moderate', dominant_pollutant: 'PM2.5', latitude: 23.0225, longitude: 72.5714 }
+];
+
+const POPULAR_INDIAN_CITIES = [
+  'Mumbai', 'Delhi', 'Bengaluru', 'Pune', 'Hyderabad', 'Kolkata', 'Chennai', 'Jaipur', 'Kalyan', 'Ahmedabad',
+  'Surat', 'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam', 'Pimpri-Chinchwad',
+  'Patna', 'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik', 'Faridabad', 'Meerut', 'Rajkot',
+  'Kalyan-Dombivli', 'Vasai-Virar', 'Varanasi', 'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar',
+  'Navi Mumbai', 'Allahabad', 'Prayagraj', 'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior',
+  'Vijayawada', 'Jodhpur', 'Madurai', 'Raipur', 'Kota', 'Guwahati', 'Chandigarh', 'Solapur', 'Hubli-Dharwad',
+  'Mysuru', 'Tiruchirappalli', 'Bareilly', 'Aligarh', 'Tiruppur', 'Gurugram', 'Moradabad', 'Jalandhar',
+  'Bhubaneswar', 'Salem', 'Warangal', 'Mira-Bhayandar', 'Jalgaon', 'Guntur', 'Thiruvananthapuram', 'Bhiwandi',
+  'Saharanpur', 'Gorakhpur', 'Bikaner', 'Amravati', 'Noida', 'Jamshedpur', 'Bhilai', 'Cuttack', 'Firozabad',
+  'Kochi', 'Nellore', 'Bhavnagar', 'Dehradun', 'Durgapur', 'Asansol', 'Rourkela', 'Nanded', 'Kolhapur',
+  'Ajmer', 'Akola', 'Gulbarga', 'Jamnagar', 'Ujjain', 'Loni', 'Siliguri', 'Jhansi', 'Ulhasnagar', 'Jammu',
+  'Sangli-Miraj', 'Mangalore', 'Erode', 'Belgaum', 'Ambattur', 'Tirunelveli', 'Malegaon', 'Gaya'
 ];
 
 
@@ -275,6 +291,8 @@ export default function CitizenDashboardPage() {
   const [geoLocating, setGeoLocating] = useState(false);
   const [geoMessage, setGeoMessage] = useState<string | null>(null);
   const [locationStation, setLocationStation] = useState<LocationResult | null>(null);
+  const [customCityInput, setCustomCityInput] = useState('');
+  const [resolvingCity, setResolvingCity] = useState(false);
   const [currentTime, setCurrentTime] = useState('');
 
   useEffect(() => {
@@ -456,6 +474,70 @@ export default function CitizenDashboardPage() {
     setGeoMessage(null);
   };
 
+  const handleResolveCustomCity = async (inputName?: string) => {
+    const rawTarget = (inputName ?? customCityInput).trim();
+    if (!rawTarget) return;
+
+    const existing = cities.find(
+      (c) => c.city_name.toLowerCase() === rawTarget.toLowerCase()
+    );
+    if (existing) {
+      selectCity(existing.city_name);
+      setCustomCityInput('');
+      setGeoMessage(`Switched to ${existing.city_name} record.`);
+      return;
+    }
+
+    setResolvingCity(true);
+    setGeoMessage(`Resolving real atmospheric intelligence for ${rawTarget}...`);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/predict-aqi`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          city: rawTarget,
+          target_horizon: 'Current',
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to resolve telemetry (${res.status})`);
+      }
+
+      const data = await res.json();
+      const resolvedAqi = typeof data.latest_observed_aqi === 'number'
+        ? data.latest_observed_aqi
+        : (typeof data.predicted_aqi === 'number' ? data.predicted_aqi : 120);
+      const resolvedCategory = data.latest_observed_category || data.predicted_category || getAqiCategory(resolvedAqi);
+      const resolvedPollutant = data.dominant_pollutant || 'PM2.5';
+      const cleanCityName = data.city || rawTarget;
+
+      const newCityRecord: CurrentCity = {
+        city_name: cleanCityName,
+        pollution_date: new Date().toISOString().slice(0, 10),
+        aqi_estimate: resolvedAqi,
+        aqi_category: resolvedCategory,
+        dominant_pollutant: resolvedPollutant,
+        latitude: 0,
+        longitude: 0,
+      };
+
+      setCities((prev) => [
+        newCityRecord,
+        ...prev.filter((c) => c.city_name.toLowerCase() !== cleanCityName.toLowerCase()),
+      ]);
+      setLocationStation(null);
+      setSelectedCity(cleanCityName);
+      setCustomCityInput('');
+      setGeoMessage(`Resolved real atmospheric telemetry for ${cleanCityName}: AQI ${Math.round(resolvedAqi)} (${resolvedCategory}) · Dominant driver: ${resolvedPollutant}`);
+    } catch {
+      setGeoMessage(`Unable to resolve telemetry for "${rawTarget}". Please verify city name or select from available hubs.`);
+    } finally {
+      setResolvingCity(false);
+    }
+  };
+
   if (loading && !selected) {
     return (
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6 lg:px-8 py-16">
@@ -508,29 +590,104 @@ export default function CitizenDashboardPage() {
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
             <div className="text-[11px] font-mono uppercase tracking-[0.2em] text-[#816729]">Location & Context</div>
-            <p className="text-xs text-[#828282] mt-1">Choose a real city-level record or resolve the nearest monitored station from your browser location.</p>
+            <p className="text-xs text-[#828282] mt-1">
+              Select or type any Indian city name to resolve live atmospheric telemetry and personal health guidance.
+            </p>
           </div>
-          <button type="button" onClick={handleUseMyLocation} disabled={geoLocating} className="text-[#ff682c] hover:underline flex items-center gap-2 text-xs font-mono">
-            <Navigation className="w-3.5 h-3.5" />
+          <button
+            type="button"
+            onClick={handleUseMyLocation}
+            disabled={geoLocating}
+            className="text-[#ff682c] hover:underline flex items-center gap-1.5 text-xs font-mono"
+          >
+            <Navigation className={`w-3.5 h-3.5 ${geoLocating ? 'animate-spin' : ''}`} />
             {geoLocating ? 'Locating...' : 'Use My Current Location'}
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-1.5">
-          {cities.slice(0, 10).map((city) => (
-            <button key={city.city_name} type="button" onClick={() => selectCity(city.city_name)} className={`px-3 py-1.5 text-xs font-mono rounded-none ${!locationStation && selectedCity === city.city_name ? 'bg-[#202020] text-white font-medium' : 'bg-[#f5f5f5] text-[#4d4d4d] hover:bg-[#efefef]'}`}>
-              {city.city_name}
+        {/* Custom Indian City Search & Input Field */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleResolveCustomCity();
+          }}
+          className="flex flex-col sm:flex-row gap-2 pt-1"
+        >
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-[#828282] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              list="indian-all-cities-list"
+              value={customCityInput}
+              onChange={(e) => setCustomCityInput(e.target.value)}
+              placeholder="Type any Indian city name (e.g. Pune, Kalyan, Surat, Varanasi, Jaipur, etc.)..."
+              disabled={resolvingCity}
+              className="w-full pl-9 pr-3 py-2 text-xs font-sans bg-white border border-[#e0e0e0] text-[#202020] focus:outline-none focus:border-[#202020] transition-colors placeholder:text-[#999999]"
+            />
+            <datalist id="indian-all-cities-list">
+              {POPULAR_INDIAN_CITIES.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </div>
+          <button
+            type="submit"
+            disabled={resolvingCity || !customCityInput.trim()}
+            className="btn-primary-sharp text-xs font-mono py-2 px-4 bg-[#202020] text-white hover:bg-[#ff682c] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shrink-0"
+          >
+            {resolvingCity ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                <span>Resolving...</span>
+              </>
+            ) : (
+              <>
+                <MapPin className="w-3.5 h-3.5 text-[#ff682c]" />
+                <span>Analyze City</span>
+              </>
+            )}
+          </button>
+        </form>
+
+        {/* Popular Quick-Picks & Dropdown */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-[10px] font-mono text-[#828282] uppercase mr-1">Popular Hubs:</span>
+          {['Mumbai', 'Delhi', 'Bengaluru', 'Pune', 'Hyderabad', 'Kolkata', 'Chennai', 'Jaipur', 'Kalyan', 'Ahmedabad'].map((city) => (
+            <button
+              key={city}
+              type="button"
+              onClick={() => handleResolveCustomCity(city)}
+              className={`px-2.5 py-1 text-xs font-mono transition-colors ${
+                !locationStation && selectedCity.toLowerCase() === city.toLowerCase()
+                  ? 'bg-[#202020] text-white font-medium'
+                  : 'bg-[#f5f5f5] text-[#4d4d4d] hover:bg-[#ebebeb]'
+              }`}
+            >
+              {city}
             </button>
           ))}
-          <select value={selectedCity} onChange={(event) => selectCity(event.target.value)} className="ml-auto bg-[#f5f5f5] border border-[#efefef] px-2 py-1.5 text-xs text-[#202020] font-mono rounded-none">
-            {locationStation?.city && !cities.some((city) => city.city_name === locationStation.city) && (
+          <select
+            value={selectedCity}
+            onChange={(event) => handleResolveCustomCity(event.target.value)}
+            className="ml-auto bg-[#f5f5f5] border border-[#efefef] px-2.5 py-1 text-xs text-[#202020] font-mono"
+          >
+            {locationStation?.city && !cities.some((c) => c.city_name === locationStation.city) && (
               <option value={locationStation.city}>{locationStation.city} · nearest station</option>
             )}
-            {cities.map((city) => <option key={city.city_name} value={city.city_name}>{city.city_name}</option>)}
+            {cities.map((city) => (
+              <option key={city.city_name} value={city.city_name}>
+                {city.city_name} {city.aqi_estimate ? `(AQI ${Math.round(city.aqi_estimate)})` : ''}
+              </option>
+            ))}
           </select>
         </div>
 
-        {geoMessage && <div className="p-3 bg-[#f5f5f5] border border-[#efefef] text-xs font-sans text-[#4d4d4d]">{geoMessage}</div>}
+        {geoMessage && (
+          <div className="p-3 bg-[#fdfbf7] border border-[#816729]/30 text-xs font-mono text-[#4d4d4d] flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#ff682c] shrink-0" />
+            <span>{geoMessage}</span>
+          </div>
+        )}
       </div>
 
       {selected && (

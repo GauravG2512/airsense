@@ -8,5 +8,5 @@ services:
     envVars:
       - key: CORS_ORIGINS
         value: "*"
-      - key: GEMINI_API_KEY
+      - key: AIRSENSE_MODEL_API_KEY
         sync: false

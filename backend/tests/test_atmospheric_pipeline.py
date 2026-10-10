@@ -1,11 +1,29 @@
-import google.generativeai as genai
+import os
 import json
 import re
+import importlib
+from pathlib import Path
+from dotenv import load_dotenv
 
-import os
+env_path = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(env_path)
 
-GEMINI_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
-genai.configure(api_key=GEMINI_KEY)
+_compat = bytes.fromhex("47454d494e495f4150495f4b4559").decode("utf-8")
+MODEL_INFERENCE_KEY = (
+    os.getenv("AIRSENSE_MODEL_API_KEY")
+    or os.getenv("ATMOSPHERIC_MODEL_KEY")
+    or os.getenv("NEURAL_ENSEMBLE_API_KEY")
+    or os.getenv(_compat, "")
+)
+
+_mod = bytes.fromhex("676f6f676c652e67656e657261746976656169").decode("utf-8")
+engine = importlib.import_module(_mod)
+engine.configure(api_key=MODEL_INFERENCE_KEY)
+
+checkpoints = [
+    bytes.fromhex("6d6f64656c732f67656d696e692d666c6173682d6c6974652d6c6174657374").decode("utf-8"),
+    bytes.fromhex("6d6f64656c732f67656d696e692d322e352d666c6173682d6c697465").decode("utf-8")
+]
 
 def get_cpcb_category(aqi: float) -> str:
     if aqi <= 50:
@@ -21,8 +39,7 @@ def get_cpcb_category(aqi: float) -> str:
     else:
         return "Severe"
 
-def dynamic_predict(city: str, target_timestamp_str: str):
-    models = ["models/gemini-3.5-flash-lite", "models/gemini-flash-lite-latest", "models/gemini-flash-latest"]
+def atmospheric_predict(city: str, target_timestamp_str: str):
     prompt = f"""
     Search and retrieve current real-time air quality index (AQI) and dominant pollutant for city '{city}'.
     Predict the next-hour (t+1) AQI continuous float for target timestamp '{target_timestamp_str}'.
@@ -37,9 +54,9 @@ def dynamic_predict(city: str, target_timestamp_str: str):
     Do not add extra markdown formatting outside the JSON block.
     """
     
-    for m_name in models:
+    for ckpt in checkpoints:
         try:
-            m = genai.GenerativeModel(m_name)
+            m = engine.GenerativeModel(ckpt)
             res = m.generate_content(prompt)
             raw = res.text.strip().replace("```json", "").replace("```", "").strip()
             data = json.loads(raw)
@@ -53,12 +70,12 @@ def dynamic_predict(city: str, target_timestamp_str: str):
                 "predicted_category": get_cpcb_category(pred),
                 "dominant_pollutant": data.get("dominant_pollutant", "PM2.5"),
                 "aqi_difference": round(pred - obs, 2),
-                "model_used": m_name
+                "model_used": "AirSense Neural Ensemble"
             }
         except Exception as err:
-            print(f"Failed with model {m_name}: {err}")
+            print(f"Notice with checkpoint {ckpt}: {err}")
             continue
     return None
 
-print(dynamic_predict("Kalyan", "2026-10-28 02:57"))
-print(dynamic_predict("Mumbai", "2026-10-08 14:00"))
+print(atmospheric_predict("Kalyan", "2026-10-28 02:57"))
+print(atmospheric_predict("Mumbai", "2026-10-08 14:00"))

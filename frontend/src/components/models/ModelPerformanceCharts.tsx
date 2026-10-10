@@ -33,69 +33,282 @@ function numericValue(row: MetricRow, key: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function MetricBarChart({
+function MetricLineChart({
   title,
   rows,
   metric,
+  color = '#ff682c',
 }: {
   title: string;
   rows: MetricRow[];
   metric: MetricDefinition;
+  color?: string;
 }) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
   const values = rows.flatMap((row) => {
     const value = numericValue(row, metric.key);
     return value === null ? [] : [{ model: row.model, value }];
   });
-  const best = values.length
-    ? values.reduce((current, item) =>
-        metric.higherIsBetter
-          ? item.value > current.value ? item : current
-          : item.value < current.value ? item : current
-      )
-    : null;
-  const maxValue = Math.max(...values.map(({ value }) => value), 0);
+
+  if (values.length === 0) {
+    return (
+      <section className="rounded-lg border border-[#e8e8e8] bg-white p-4" aria-label={title}>
+        <div className="mb-3 flex items-baseline justify-between gap-2 border-b border-[#efefef] pb-2">
+          <h4 className="text-sm font-medium text-[#202020]">{title}</h4>
+        </div>
+        <p className="text-xs text-[#828282]">No values available for this metric.</p>
+      </section>
+    );
+  }
+
+  const best = values.reduce((current, item) =>
+    metric.higherIsBetter
+      ? item.value > current.value ? item : current
+      : item.value < current.value ? item : current
+  );
+
+  const rawMin = Math.min(...values.map((v) => v.value));
+  const rawMax = Math.max(...values.map((v) => v.value));
+
+  const paddingMargin = (rawMax - rawMin) * 0.18 || Math.abs(rawMax * 0.1) || 1;
+  const minY = Math.max(0, rawMin - paddingMargin);
+  const maxY = rawMax + paddingMargin;
+  const yRange = maxY - minY || 1;
+
+  const svgWidth = 520;
+  const svgHeight = 220;
+  const padLeft = 55;
+  const padRight = 35;
+  const padTop = 32;
+  const padBottom = 58;
+
+  const plotWidth = svgWidth - padLeft - padRight;
+  const plotHeight = svgHeight - padTop - padBottom;
+
+  const points = values.map((item, idx) => {
+    const x =
+      values.length > 1
+        ? padLeft + (idx / (values.length - 1)) * plotWidth
+        : padLeft + plotWidth / 2;
+    const norm = (item.value - minY) / yRange;
+    const y = padTop + plotHeight - norm * plotHeight;
+    const isBest = item.model === best.model;
+    const isChampion = item.model.toLowerCase().includes('champion');
+    return { ...item, x, y, idx, isBest, isChampion };
+  });
+
+  const polylinePoints = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const areaPath = `M ${points[0].x.toFixed(1)} ${(padTop + plotHeight).toFixed(1)} ` +
+    points.map((p) => `L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ') +
+    ` L ${points[points.length - 1].x.toFixed(1)} ${(padTop + plotHeight).toFixed(1)} Z`;
+
+  const yTicks = [0, 0.33, 0.66, 1].map((ratio) => {
+    const val = minY + ratio * yRange;
+    const y = padTop + plotHeight - ratio * plotHeight;
+    return { val, y };
+  });
+
+  const gradientId = `line-grad-${metric.key}-${title.replace(/[^a-zA-Z0-9]/g, '')}`;
 
   return (
-    <section className="rounded-lg border border-[#e8e8e8] bg-white p-4" aria-label={title}>
-      <div className="mb-3 flex items-baseline justify-between gap-2 border-b border-[#efefef] pb-2">
-        <h4 className="text-sm text-[#202020]">{title}</h4>
-        <span className="text-[10px] font-mono text-[#828282]">
-          {metric.higherIsBetter ? 'Higher is better' : 'Lower is better'}
-        </span>
-      </div>
-      <div className="space-y-3">
-        {values.map(({ model, value }, index) => (
-          <div key={model} className="space-y-1">
-            <div className="flex items-center justify-between gap-3 text-[11px]">
-              <span className="truncate text-[#4d4d4d]">
-                {model}
-                {best?.model === model && (
-                  <span className="ml-1 text-[9px] font-semibold uppercase text-[#ff682c]">Best</span>
-                )}
-              </span>
-              <span className="shrink-0 font-mono text-[#202020]">{metric.format(value)}</span>
-            </div>
-            <div
-              className="h-2 overflow-hidden rounded-full bg-[#f0f0f0]"
-              role="meter"
-              aria-label={`${model} ${title}`}
-              aria-valuemin={0}
-              aria-valuemax={maxValue}
-              aria-valuenow={value}
-            >
-              <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${maxValue > 0 ? Math.max((value / maxValue) * 100, 1) : 0}%`,
-                  backgroundColor: COLORS[index % COLORS.length],
-                }}
-              />
-            </div>
+    <section className="rounded-lg border border-[#e8e8e8] bg-white p-4 space-y-3" aria-label={title}>
+      {/* Chart Header */}
+      <div className="flex items-baseline justify-between gap-2 border-b border-[#efefef] pb-2">
+        <div>
+          <h4 className="text-sm font-medium text-[#202020]">{title}</h4>
+          <span className="text-[10px] font-mono text-[#828282]">
+            {metric.higherIsBetter ? 'Higher is better' : 'Lower is better'}
+          </span>
+        </div>
+        {best && (
+          <div className="flex items-center gap-1.5 font-mono text-[11px] bg-[#fdfbf7] border border-[#816729]/30 px-2 py-0.5 rounded">
+            <span className="text-[#816729] font-medium">Champion:</span>
+            <span className="text-[#202020] font-semibold truncate max-w-[150px]">
+              {best.model}
+            </span>
+            <span className="text-[#ff682c] font-bold">({metric.format(best.value)})</span>
           </div>
-        ))}
-        {values.length === 0 && (
-          <p className="text-xs text-[#828282]">No values available for this metric.</p>
         )}
+      </div>
+
+      {/* SVG Line Graph */}
+      <div className="relative w-full overflow-hidden">
+        <svg
+          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+          className="w-full h-auto overflow-visible select-none"
+        >
+          <defs>
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={color} stopOpacity="0.01" />
+            </linearGradient>
+          </defs>
+
+          {/* Horizontal Gridlines & Y-labels */}
+          {yTicks.map((tick, i) => (
+            <g key={i}>
+              <line
+                x1={padLeft}
+                y1={tick.y}
+                x2={svgWidth - padRight}
+                y2={tick.y}
+                stroke="#ebebeb"
+                strokeDasharray="3 3"
+                strokeWidth="1"
+              />
+              <text
+                x={padLeft - 8}
+                y={tick.y + 3}
+                textAnchor="end"
+                className="text-[9px] fill-[#888888] font-mono"
+              >
+                {metric.format(tick.val)}
+              </text>
+            </g>
+          ))}
+
+          {/* Area Fill */}
+          <path d={areaPath} fill={`url(#${gradientId})`} />
+
+          {/* Connecting Line */}
+          <polyline
+            fill="none"
+            stroke={color}
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={polylinePoints}
+          />
+
+          {/* Data Points & Drop Lines */}
+          {points.map((pt) => {
+            const isHovered = hoveredIdx === pt.idx;
+            const isSpecial = pt.isChampion || pt.isBest;
+
+            return (
+              <g
+                key={pt.model}
+                className="cursor-pointer"
+                onMouseEnter={() => setHoveredIdx(pt.idx)}
+                onMouseLeave={() => setHoveredIdx(null)}
+              >
+                {/* Vertical drop line */}
+                <line
+                  x1={pt.x}
+                  y1={pt.y}
+                  x2={pt.x}
+                  y2={padTop + plotHeight}
+                  stroke={isHovered ? color : '#e5e5e5'}
+                  strokeDasharray="2 2"
+                  strokeWidth={isHovered ? 1.5 : 1}
+                />
+
+                {/* Outer halo for champion or hovered */}
+                {(isSpecial || isHovered) && (
+                  <circle
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={isHovered ? 8 : 6.5}
+                    fill={color}
+                    fillOpacity={isHovered ? 0.35 : 0.2}
+                  />
+                )}
+
+                {/* Point circle */}
+                <circle
+                  cx={pt.x}
+                  cy={pt.y}
+                  r={isSpecial || isHovered ? 4.5 : 3.5}
+                  fill={isSpecial ? '#ff682c' : '#ffffff'}
+                  stroke={isSpecial ? '#ff682c' : color}
+                  strokeWidth={isSpecial ? 2.5 : 2}
+                />
+
+                {/* Metric value callout above point */}
+                <g transform={`translate(${pt.x}, ${pt.y - 10})`}>
+                  <rect
+                    x={-24}
+                    y={-14}
+                    width={48}
+                    height={14}
+                    rx={3}
+                    fill={isSpecial ? '#202020' : '#ffffff'}
+                    stroke={isSpecial ? '#ff682c' : '#e0e0e0'}
+                    strokeWidth="1"
+                    opacity={isHovered || isSpecial ? 1 : 0.9}
+                  />
+                  <text
+                    x={0}
+                    y={-4}
+                    textAnchor="middle"
+                    className={`text-[9px] font-mono font-semibold ${
+                      isSpecial ? 'fill-[#ffffff]' : 'fill-[#202020]'
+                    }`}
+                  >
+                    {metric.format(pt.value)}
+                  </text>
+                </g>
+
+                {/* Model name below X-axis */}
+                <g transform={`translate(${pt.x}, ${padTop + plotHeight + 14})`}>
+                  <text
+                    x={0}
+                    y={0}
+                    textAnchor="middle"
+                    className={`text-[9px] font-mono transition-colors ${
+                      isSpecial
+                        ? 'fill-[#ff682c] font-bold'
+                        : isHovered
+                        ? 'fill-[#202020] font-semibold'
+                        : 'fill-[#666666]'
+                    }`}
+                    transform="rotate(-20)"
+                  >
+                    {pt.model.length > 15 ? `${pt.model.slice(0, 13)}...` : pt.model}
+                  </text>
+                </g>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      {/* Model Legend & Metric List */}
+      <div className="pt-2 border-t border-[#f0f0f0] flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono">
+        {points.map((pt) => {
+          const isSpecial = pt.isChampion || pt.isBest;
+          return (
+            <div
+              key={pt.model}
+              onMouseEnter={() => setHoveredIdx(pt.idx)}
+              onMouseLeave={() => setHoveredIdx(null)}
+              className={`flex items-center gap-1.5 px-2 py-0.5 rounded cursor-pointer transition-colors ${
+                hoveredIdx === pt.idx
+                  ? 'bg-[#f0f0f0]'
+                  : isSpecial
+                  ? 'bg-[#fdfbf7] text-[#202020]'
+                  : 'text-[#4d4d4d]'
+              }`}
+            >
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: isSpecial ? '#ff682c' : color }}
+              />
+              <span className={`truncate max-w-[130px] ${isSpecial ? 'font-semibold text-[#202020]' : ''}`}>
+                {pt.model}
+              </span>
+              <span className={`font-semibold ${isSpecial ? 'text-[#ff682c]' : 'text-[#202020]'}`}>
+                {metric.format(pt.value)}
+              </span>
+              {isSpecial && (
+                <span className="text-[8px] uppercase tracking-wider px-1 py-0.2 bg-[#ff682c] text-white rounded">
+                  Leader
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -118,13 +331,14 @@ function ChartGroup({
         <h3 className="text-lg text-[#202020]">{title}</h3>
         <p className="mt-1 text-[11px] text-[#828282]">{description}</p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {metrics.map((metric) => (
-          <MetricBarChart
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {metrics.map((metric, idx) => (
+          <MetricLineChart
             key={metric.key}
             title={metric.label}
             rows={rows}
             metric={metric}
+            color={COLORS[idx % COLORS.length]}
           />
         ))}
       </div>
