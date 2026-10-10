@@ -136,23 +136,28 @@ flowchart TD
 │   ├── models/               # Serialized ML models (XGBoost, IsolationForest)
 │   ├── quality_reports/      # Data quality audit reports & validation metrics
 │   ├── reports/              # Project manifests & ETL reconciliation summaries
+│   ├── tests/                # Backend unit tests and verification scripts
 │   ├── ui_outputs/           # Precomputed analytical outputs served to UI
 │   ├── warehouse/            # DuckDB database & SQL schemas / OLAP scripts
 │   └── requirements.txt      # Python dependencies
 ├── docs/                     # Design documentation & project specifications
 │   ├── AirSense.pdf          # Academic project report and reference paper
 │   └── DESIGN.md             # Ventriloc design system specification & tokens
+├── frontend/                 # Next.js 16 App Router frontend application
+│   ├── public/               # Static web assets & icons
+│   ├── src/                  # Next.js source code
+│   │   ├── app/              # Route pages (dashboard, map, olap, warehouse, etc.)
+│   │   ├── components/       # UI components (analytics, map, layout, warehouse)
+│   │   ├── context/          # React context providers (AuthContext)
+│   │   └── lib/              # Backend API client, mock data, utility functions
+│   ├── next.config.ts        # Next.js configuration
+│   ├── package.json          # Frontend dependencies and npm scripts
+│   └── tsconfig.json         # TypeScript configuration
 ├── notebooks/                # Data science & analytics Jupyter notebooks
 │   └── AirSense_DWM_ML_COMPLETE.ipynb # End-to-end DWM & ML pipeline notebook
-├── public/                   # Static web assets & icons
-├── src/                      # Next.js 16 App Router frontend
-│   ├── app/                  # Route pages (dashboard, map, olap, warehouse, etc.)
-│   ├── components/           # UI components (analytics, map, layout, warehouse)
-│   ├── context/              # React context providers (AuthContext)
-│   └── lib/                  # Backend API client, mock data, utility functions
-├── next.config.ts            # Next.js configuration
-├── package.json              # Frontend dependencies and npm scripts
-├── tsconfig.json             # TypeScript configuration
+├── package.json              # Root workspace scripts (forwards dev/build to frontend)
+├── render.yaml               # Cloud deployment descriptor for FastAPI backend
+├── vercel.json               # Cloud deployment descriptor for Next.js frontend
 └── README.md                 # Project documentation
 ```
 
@@ -379,14 +384,20 @@ Once running:
 
 #### 2. Frontend Application (Next.js 16 + React 19)
 
-In a separate terminal at the project root, install Node dependencies and launch the dev server:
-```bash
-# Install frontend dependencies
-npm install
+You can launch the frontend directly from the project root (using the root proxy scripts) or from the `frontend/` directory:
 
-# Start Next.js development server
-npm run dev
-```
+- **From the project root:**
+  ```bash
+  # Start Next.js development server
+  npm run dev
+  ```
+
+- **Or from the `frontend/` directory:**
+  ```bash
+  cd frontend
+  npm install
+  npm run dev
+  ```
 
 Navigate to [http://localhost:3000](http://localhost:3000) in your web browser. The frontend connects to the FastAPI backend running on port 8000.
 
@@ -396,7 +407,7 @@ Navigate to [http://localhost:3000](http://localhost:3000) in your web browser. 
 
 The project includes `.env.example` templates for both the Next.js frontend and the FastAPI backend.
 
-#### Frontend (`.env.local` at root)
+#### Frontend (`frontend/.env.local` or `.env.local`)
 
 | Variable | Required | Default | Purpose |
 | :--- | :--- | :--- | :--- |
@@ -407,7 +418,7 @@ The project includes `.env.example` templates for both the Next.js frontend and 
 
 To customize, copy the template:
 ```bash
-cp .env.example .env.local
+cp frontend/.env.example frontend/.env.local
 ```
 
 #### Backend (`backend/.env`)
